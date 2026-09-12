@@ -7,7 +7,7 @@ import { ensureHooksConfirmed } from '@/lib/ensure-hooks-confirmed'
 import { getActiveRuntimeTarget } from '../../../../runtime/runtime-rpc-client'
 import { forgetHugeRepoWarningDismissalsForWorktrees } from '@/lib/source-control-huge-repo-warning-dismissals'
 import { forgetWorktreeSleepIntent } from '@/lib/worktree-sleep-intent'
-import { readableIpcErrorMessage } from '@/lib/ipc-error-message'
+import { readIpcErrorDetail } from '@/lib/ipc-error'
 import { isArchiveHookRemovalError } from '../../../../../../shared/worktree/archive-hook-removal-gate'
 import { showPreservedBranchToast } from '@/components/sidebar/preserved-branch-toast'
 import {
@@ -301,7 +301,7 @@ export function createRemoveWorktree(
       console.warn('Failed to remove worktree:', err)
       // The raw message arrives wrapped in Electron's IPC channel and class names; this string is
       // read by a user in a toast, and the refusal sentence has to lead it.
-      const error = readableIpcErrorMessage(err instanceof Error ? err.message : String(err))
+      const error = readIpcErrorDetail(err) ?? (err instanceof Error ? err.message : String(err))
       const forceDeleteReason = classifyWorktreeForceDeleteReason(
         error,
         force,
