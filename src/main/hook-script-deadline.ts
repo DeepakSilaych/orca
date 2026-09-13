@@ -83,7 +83,7 @@ export function runHookScriptWithDeadline(args: {
         if (error) {
           // A string `code` (ENOENT and friends) means the process never started, so no exit was
           // observed — the numeric check is what keeps that out of the `exited` verdict.
-          const code = (error as { code?: unknown }).code
+          const code = 'code' in error ? error.code : undefined
           settle({
             success: false,
             output: `${stdout}\n${stderr}\n${error.message}`.trim(),

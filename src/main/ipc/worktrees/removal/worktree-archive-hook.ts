@@ -42,7 +42,8 @@ export async function getArchiveHooksForRemoval(repo: Repo): Promise<ArchiveHook
     return { hooks: getEffectiveHooksFromConfig(repo, yamlHooks), hookConfigUnreadable: false }
   } catch (error) {
     // A missing orca.yaml is a normal, observed answer; anything else means we never got to look.
-    const missing = (error as { code?: unknown } | null)?.code === 'ENOENT'
+    const missing =
+      typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT'
     return {
       hooks: getEffectiveHooksFromConfig(repo, null),
       hookConfigUnreadable: !missing

@@ -5,11 +5,14 @@ import { gateRemovalWhereArchiveHookCannotRun } from './worktree-archive-hook-ga
 const { getEffectiveHooksMock } = vi.hoisted(() => ({ getEffectiveHooksMock: vi.fn() }))
 vi.mock('./hooks', () => ({ getEffectiveHooks: getEffectiveHooksMock }))
 
-const REPO = { id: 'r', path: '/repo' } as Repo
+const REPO: Repo = { id: 'r', path: '/repo', displayName: 'r', badgeColor: '#000', addedAt: 0 }
 const withArchiveHook = (present: boolean): void => {
   getEffectiveHooksMock.mockReturnValue(present ? { scripts: { archive: 'archive.sh' } } : null)
 }
-import { ARCHIVE_HOOK_FAILED_REMOVAL_CODE } from '../shared/worktree/archive-hook-removal-gate'
+import {
+  ARCHIVE_HOOK_FAILED_REMOVAL_CODE,
+  WorktreeArchiveHookFailedError
+} from '../shared/worktree/archive-hook-removal-gate'
 
 // Why (#19334 / S1): the runtime's SSH path runs no archive hook. Silently deleting there would
 // reproduce the reported bug in the one place `worktree.archive-failure-blocking.v1` promises it
@@ -38,12 +41,13 @@ describe('gateRemovalWhereArchiveHookCannotRun', () => {
     } catch (error) {
       thrown = error
     }
-    expect((thrown as { code?: string }).code).toBe(ARCHIVE_HOOK_FAILED_REMOVAL_CODE)
+    expect(thrown).toBeInstanceOf(WorktreeArchiveHookFailedError)
+    if (!(thrown instanceof WorktreeArchiveHookFailedError)) {
+      throw thrown
+    }
+    expect(thrown.code).toBe(ARCHIVE_HOOK_FAILED_REMOVAL_CODE)
     // Never `exited`: nothing ran, so nothing reported an exit to read.
-    expect((thrown as { data?: { outcome?: string; exitCode?: number } }).data).toMatchObject({
-      worktreePath: '/w/f',
-      outcome: 'unverifiable'
-    })
-    expect((thrown as { data?: { exitCode?: number } }).data?.exitCode).toBeUndefined()
+    expect(thrown.data).toMatchObject({ worktreePath: '/w/f', outcome: 'unverifiable' })
+    expect(thrown.data.exitCode).toBeUndefined()
   })
 })

@@ -19,7 +19,10 @@ import {
   deferred
 } from '../orca-runtime-test-fixtures.spec'
 import { createWorktreeRemovalRuntime } from '../orca-runtime-test-scenario-builders.spec'
-import { ARCHIVE_HOOK_FAILED_REMOVAL_CODE } from '../../../shared/worktree/archive-hook-removal-gate'
+import {
+  ARCHIVE_HOOK_FAILED_REMOVAL_CODE,
+  WorktreeArchiveHookFailedError
+} from '../../../shared/worktree/archive-hook-removal-gate'
 
 function withArchiveHook(): void {
   vi.mocked(getEffectiveHooks).mockReturnValue({
@@ -66,9 +69,12 @@ describe('archive hook removal gate', () => {
       .removeManagedWorktree(TEST_WORKTREE_ID, { force: false, runHooks: true })
       .catch((error: unknown) => error)
 
-    expect(failure).toBeInstanceOf(Error)
-    expect((failure as { code?: string }).code).toBe(ARCHIVE_HOOK_FAILED_REMOVAL_CODE)
-    expect((failure as { data?: unknown }).data).toEqual({
+    expect(failure).toBeInstanceOf(WorktreeArchiveHookFailedError)
+    if (!(failure instanceof WorktreeArchiveHookFailedError)) {
+      throw failure
+    }
+    expect(failure.code).toBe(ARCHIVE_HOOK_FAILED_REMOVAL_CODE)
+    expect(failure.data).toEqual({
       worktreePath: TEST_WORKTREE_PATH,
       outcome: 'exited',
       exitCode: 23,
@@ -91,7 +97,11 @@ describe('archive hook removal gate', () => {
       .removeManagedWorktree(TEST_WORKTREE_ID, { force: false, runHooks: true })
       .catch((error: unknown) => error)
 
-    expect((failure as { data?: { outcome?: string; exitCode?: number } }).data).toEqual({
+    expect(failure).toBeInstanceOf(WorktreeArchiveHookFailedError)
+    if (!(failure instanceof WorktreeArchiveHookFailedError)) {
+      throw failure
+    }
+    expect(failure.data).toEqual({
       worktreePath: TEST_WORKTREE_PATH,
       outcome: 'unverifiable',
       output: 'Hook timed out after 120000ms.'

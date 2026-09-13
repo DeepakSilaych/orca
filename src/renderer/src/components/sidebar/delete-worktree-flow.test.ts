@@ -1,7 +1,20 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ExecutionHostId } from '../../../../shared/execution-host'
 
+type MockWorktreeDeleteState = {
+  isDeleting?: boolean
+  error?: string | null
+  canForceDelete?: boolean
+  forceDeleteReason?: 'dirty' | null
+  lockReason?: string | null
+  canWaiveArchiveHook?: boolean
+  executionHostId?: ExecutionHostId | null
+}
+
 const mocks = vi.hoisted(() => {
+  // Declared up here so the empty initialisers can be typed rather than asserted.
+  const gitStatusByWorktree: Record<string, unknown[]> = {}
+  const deleteStateByWorktreeId: Record<string, MockWorktreeDeleteState> = {}
   const state = {
     settings: { skipDeleteWorktreeConfirm: false },
     worktreeMap: new Map<
@@ -35,19 +48,8 @@ const mocks = vi.hoisted(() => {
     setRightSidebarTab: vi.fn(),
     setRightSidebarOpen: vi.fn(),
     removeWorktree: vi.fn().mockResolvedValue({ ok: true }),
-    gitStatusByWorktree: {} as Record<string, unknown[]>,
-    deleteStateByWorktreeId: {} as Record<
-      string,
-      {
-        isDeleting?: boolean
-        error?: string | null
-        canForceDelete?: boolean
-        forceDeleteReason?: 'dirty' | null
-        lockReason?: string | null
-        canWaiveArchiveHook?: boolean
-        executionHostId?: ExecutionHostId | null
-      }
-    >
+    gitStatusByWorktree,
+    deleteStateByWorktreeId
   }
   return { state }
 })

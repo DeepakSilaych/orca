@@ -14,7 +14,7 @@ vi.mock('./effective-hook-config', () => ({
   getEffectiveHooksFromConfig: () => ({ scripts: { archive: 'do-the-archive' } })
 }))
 
-const REPO = { id: 'r', path: '/repo', displayName: 'r', badgeColor: '#000', addedAt: 0 } as Repo
+const REPO: Repo = { id: 'r', path: '/repo', displayName: 'r', badgeColor: '#000', addedAt: 0 }
 
 /** Drive runHook once with the error object `exec` would hand back for a given failure mode. */
 async function runArchiveWith(error: unknown): Promise<{ success: boolean; exitCode?: number }> {

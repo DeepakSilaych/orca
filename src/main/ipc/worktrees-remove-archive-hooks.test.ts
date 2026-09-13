@@ -107,6 +107,7 @@ vi.mock('./pty', async () => (await import('./worktrees-test-module-mocks')).pty
 // The shared IPC surface types every handler as returning `unknown`; removal's contract is
 // narrower, and #19334's whole point is that a caller can name and branch on it.
 async function removeWorktreeViaIpc(args: RemoveWorktreeArgs): Promise<RemoveWorktreeResult> {
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the registry types every handler as `(...) => unknown`, so this is the only place the real `worktrees:remove` return shape can be named; the production caller in worktree-ipc.ts declares the same type.
   return (await handlers['worktrees:remove'](null, args)) as RemoveWorktreeResult
 }
 
