@@ -1,3 +1,4 @@
+import { createSessSubprocess } from './sess/sess-subprocess'
 import type { SubprocessHandle } from './session-subprocess-handle'
 import { normalizePtySize } from './daemon-pty-size'
 import { TerminalAttachCanceledError } from './daemon-errors'
@@ -78,6 +79,20 @@ export async function createPtySubprocess(opts: PtySubprocessOptions): Promise<S
   })
   if (opts.isCanceled?.()) {
     throw new TerminalAttachCanceledError(opts.sessionId)
+  }
+
+  const sessExecutable = opts.env?.ORCA_SESS_EXECUTABLE ?? process.env.ORCA_SESS_EXECUTABLE
+  if (sessExecutable) {
+    return createSessSubprocess(
+      opts,
+      {
+        ...env,
+        ORCA_SESS_EXECUTABLE: sessExecutable,
+        ORCA_SESS_DIR: opts.env?.ORCA_SESS_DIR ?? process.env.ORCA_SESS_DIR ?? ''
+      },
+      launch.shellPath,
+      launch.spawnCwd
+    )
   }
 
   let spawned: SpawnedDaemonPty

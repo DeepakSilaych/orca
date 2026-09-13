@@ -55,7 +55,7 @@ export class SessionTerminationController {
     if (!this.beginTermination()) {
       return
     }
-    if (!this.deps.launchAgent) {
+    if (!this.deps.launchAgent || this.deps.subprocess.ownsExternalSession) {
       this.signalTerminationRoot()
     } else {
       // Why: agent tool children live in detached process groups a dying shell's SIGHUP never reaches, so sweep them.

@@ -130,3 +130,46 @@ describe('TerminalHost startup command delivery logging', () => {
     expect(sub.write).toHaveBeenCalledWith(`codex${process.platform === 'win32' ? '\r' : '\n'}`)
   })
 })
+
+describe('external sess ownership', () => {
+  it('reports reattachment and never writes the startup command again', async () => {
+    const sub = {
+      ...mockSubprocess(),
+      ownsExternalSession: true,
+      reattachedExternalSession: true,
+      startupCommandDeliveredInShellArgs: true
+    }
+    const host = new TerminalHost({ spawnSubprocess: () => sub })
+    const result = await host.createOrAttach({
+      sessionId: 'sess-recovered',
+      cols: 80,
+      rows: 24,
+      command: 'agent-start-once',
+      shellReadySupported: true,
+      streamClient: { onData: vi.fn(), onExit: vi.fn() }
+    })
+    expect(result.isNew).toBe(false)
+    expect(sub.write).not.toHaveBeenCalled()
+  })
+  it('cancels an attachment without killing its durable owner', async () => {
+    let canceled = false
+    const sub = { ...mockSubprocess(), ownsExternalSession: true }
+    const host = new TerminalHost({
+      spawnSubprocess: () => {
+        canceled = true
+        return sub
+      }
+    })
+    await expect(
+      host.createOrAttach({
+        sessionId: 'sess-canceled',
+        cols: 80,
+        rows: 24,
+        isCanceled: () => canceled,
+        streamClient: { onData: vi.fn(), onExit: vi.fn() }
+      })
+    ).rejects.toThrow()
+    expect(sub.kill).not.toHaveBeenCalled()
+    expect(sub.forceKill).not.toHaveBeenCalled()
+  })
+})

@@ -48,4 +48,4 @@ The old Magi backend is a reference for worktree layout, gh cloning, host preset
 
 ## Current state
 
-The GitHub fork and local source checkout are ready. No sess provider has been wired into Orca yet. No Orca application build or sess integration test has been run. Prior Magi tests do not validate this fork.
+The opt-in POSIX daemon adapter is implemented and tested. See [sess-backend.md](./sess-backend.md) for activation, verification, and remaining integration. The standard SSH relay and multi-repo workspace migration are not yet wired.

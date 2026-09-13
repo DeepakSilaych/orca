@@ -131,6 +131,7 @@ async function spawnAndPublishSession(
   // Why: a fallback shell does not emit the preferred shell's ready marker;
   // retaining the stale capability would indefinitely queue its first command.
   const shellReadySupported =
+    !subprocess.ownsExternalSession &&
     (opts.shellReadySupported ?? false) &&
     (subprocess.shellPath === undefined || shellPathSupportsPtyStartupBarrier(subprocess.shellPath))
   const session = new Session({
@@ -158,6 +159,10 @@ async function spawnAndPublishSession(
   })
 
   if (opts.isCanceled?.()) {
+    if (subprocess.ownsExternalSession) {
+      session.dispose()
+      throw new TerminalAttachCanceledError(opts.sessionId)
+    }
     // Retain cleanup ownership if the native child refuses to exit.
     deps.sessions.set(opts.sessionId, session)
     await session.forceKillAndDisposeSubprocess()
@@ -201,7 +206,7 @@ async function spawnAndPublishSession(
   }
 
   return {
-    isNew: true,
+    isNew: !subprocess.reattachedExternalSession,
     snapshot: null,
     pid: subprocess.pid,
     shellState: session.shellState,
