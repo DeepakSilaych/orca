@@ -1,0 +1,61 @@
+# Magi v1 — focused Orca fork
+
+The default `dev`, `build`, and `start` commands now launch Magi's focused desktop entry point. Orca's phone pairing, tasks, automations, skills, account dashboards, onboarding, telemetry, and general-purpose settings are absent from this application. The build rejects imports that pull their entry points or the old renderer store back in. Upstream source remains in the repository as reference for continued UI reuse; it is not the active app.
+
+## Run
+
+```sh
+pnpm build
+pnpm start
+# Development:
+pnpm dev
+```
+
+Requires Python 3, Git, and tmux on execution hosts. `gh` is required for GitHub cloning and PR status. Native Windows sess execution is not supported in this v1.
+
+Local data defaults to `~/Documents/Magi`; SSH hosts default to `~/magi`. Set `MAGI_ROOT` to isolate local workspace data and `MAGI_USER_DATA_PATH` to isolate desktop preferences. `ORCA_BACKGROUND_LAUNCH=1` keeps test windows hidden.
+
+## Architecture
+
+Each host owns its backend process, registry, workspace manifests, Git operations, CLI, and actual sess/tmux sessions. The Electron main process routes JSON requests to a persistent local Python worker or a worker bootstrapped over SSH. PR/Linear requests use a separate worker so network calls do not block session attachment. Losing an attachment does not kill its sess owner. Explicit End session stops it; an ended session is not silently restarted.
+
+```text
+magi/
+  repos/                         # gh clones; existing repositories may be registered in place
+  workspaces/<workspace>/
+    workspace.json
+    AGENTS.md
+    repos/<repo>/                # independent worktree for each repository
+  util_repos/                    # shared repos, no worktrees
+  utils/
+    registry.json
+    magi/                        # installed host backend and sess
+    bin/magi                     # agent CLI
+    sess-state/
+```
+
+Every host gets a permanent `Genral` workspace. A new workspace can be blank or create worktrees from new/existing branches in any selected repos. Agents attach additional repositories using the host-local CLI, even when the desktop is disconnected:
+
+```sh
+magi repo attach web --new-branch task/example --json
+magi repo attach api --new-branch task/example --json
+magi status --json
+```
+
+Lazy worktrees are created explicitly by this CLI, not by intercepting arbitrary file writes. Workspace `AGENTS.md` directs agents to attach before editing canonical repos.
+
+## UI retained
+
+Orca's canonical CSS theme, shadcn/Radix controls, file-type icons, and Monaco editor/diff infrastructure are reused. The large original single-repo panel controllers depend on Orca's full store; Magi supplies focused host-aware controllers and multi-repo file/change lists instead. Xterm mounts only the selected session. Monaco is loaded only when a file or diff is opened. Git status refreshes while visible, and PR/Linear results are cached.
+
+Appearance settings contain only dark/light theme, terminal font size, and compact sidebar rows. Files/diffs are read-only; changes, staging, unstaging, and commits are scoped to their individual repository. PR state and an explicitly attached Linear ticket appear in the bottom bar. Live Linear state requires `LINEAR_API_KEY` on the host; automatic ticket extraction from PR text is not implemented.
+
+## Validation
+
+- `pnpm test:magi`: 18 Python backend tests, including multi-repo isolation, permanent Genral, path boundaries, staged/working/renamed/binary/large file diff cases, CLI and session persistence.
+- `pnpm tc:magi`: focused renderer and Node typechecks. The old full upstream web project has unrelated project-file-list errors; the Magi renderer has its own project.
+- Changed TypeScript passes oxlint and oxfmt; production build passes the feature-scope guard.
+- Hidden Electron/CDP: create two-repo workspace, inspect Monaco diffs, stage one repo, switch terminals, reload, inspect appearance; zero renderer errors after fixes.
+- `local-vm`: actual SSH session, host-local CLI attached two worktrees, inspected remote diff, switched away/back; shell PID remained 3648343 throughout that smoke test. Temporary test sessions are cleaned up separately from user sessions.
+
+Release signing, distribution packaging, and native Windows support remain separate from this local v1.

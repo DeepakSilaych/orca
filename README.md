@@ -1,3 +1,5 @@
+> **Magi fork:** the default app is now the focused multi-repo terminal workspace. See [Magi v1](docs/magi/lite-v1.md) for running it and the active architecture. The upstream Orca documentation below is retained for reference.
+
 <h1 align="center">
   <a href="https://onOrca.dev"><img src="resources/build/icon.png" alt="Orca" width="64" valign="middle" /></a> Orca
 </h1>
