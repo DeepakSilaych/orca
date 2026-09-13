@@ -237,8 +237,9 @@ async function main() {
         'skip'
       ]).worktree
       created.push(wt)
-      writeFileSync(join(wt.path, 'PRECIOUS.txt'), `unarchived work for ${name}\n`)
-      return { ...wt, repoPath }
+      const unarchivedBody = `unarchived work for ${name}`
+      writeFileSync(join(wt.path, 'PRECIOUS.txt'), `${unarchivedBody}\n`)
+      return { ...wt, repoPath, unarchivedBody }
     }
 
     // ============================================================ SCENARIO 1
@@ -297,12 +298,12 @@ async function main() {
     )
     check('error data carries exitCode 23', forcedJson?.error?.data?.exitCode === 23)
     check('checkout directory still exists', after1.dirExists)
+    // Assert the CONTENTS, not just the path: a file that survived as an empty stub would prove
+    // nothing about the work the archive hook was supposed to rescue.
     check(
-      'unarchived file PRECIOUS.txt survives',
-      (after1.fileExists &&
-        after1.fileBody ===
-          `unarchived work for ${wt1.id.split('::').pop()?.split('/').pop()}`.trim()) ||
-        after1.fileExists
+      'unarchived file PRECIOUS.txt survives with its contents',
+      after1.fileExists && after1.fileBody === wt1.unarchivedBody,
+      `exists=${after1.fileExists} body=${JSON.stringify(after1.fileBody)}`
     )
     check('git worktree registration survives', after1.registered)
     check(

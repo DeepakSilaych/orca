@@ -1,5 +1,5 @@
 import type { Repo } from '../shared/repo-types'
-import { getEffectiveHooks } from './hooks'
+import { getArchiveHooksForRemoval } from './ipc/worktrees/removal/worktree-archive-hook'
 import {
   WorktreeArchiveHookFailedError,
   classifyArchiveHookFailure,
@@ -46,13 +46,18 @@ export function gateWorktreeRemovalOnArchiveHook(args: {
  * desktop "Delete Anyway" affordance as any other unobserved hook.
  *
  * Returns the skipped-hook warning when hooks were not requested, matching the local path.
+ *
+ * Hooks are read through `getArchiveHooksForRemoval` rather than `getEffectiveHooks`: on an
+ * SSH-hosted worktree `repo.path` names a path on the EXECUTION host, so a local read would miss
+ * the committed `orca.yaml` this gate exists for, and could refuse on a coincidental local one.
  */
-export function gateRemovalWhereArchiveHookCannotRun(args: {
+export async function gateRemovalWhereArchiveHookCannotRun(args: {
   repo: Repo
   worktreePath: string
   runHooks: boolean
-}): string | undefined {
-  if (!getEffectiveHooks(args.repo)?.scripts.archive) {
+}): Promise<string | undefined> {
+  const { hooks } = await getArchiveHooksForRemoval(args.repo)
+  if (!hooks?.scripts.archive) {
     return undefined
   }
   if (!args.runHooks) {
