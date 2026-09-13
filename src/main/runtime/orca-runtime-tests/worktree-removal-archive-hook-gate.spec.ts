@@ -21,7 +21,7 @@ import {
 import { createWorktreeRemovalRuntime } from '../orca-runtime-test-scenario-builders.spec'
 import {
   ARCHIVE_HOOK_FAILED_REMOVAL_CODE,
-  WorktreeArchiveHookFailedError
+  asArchiveHookRefusal
 } from '../../../shared/worktree/archive-hook-removal-gate'
 
 function withArchiveHook(): void {
@@ -69,12 +69,9 @@ describe('archive hook removal gate', () => {
       .removeManagedWorktree(TEST_WORKTREE_ID, { force: false, runHooks: true })
       .catch((error: unknown) => error)
 
-    expect(failure).toBeInstanceOf(WorktreeArchiveHookFailedError)
-    if (!(failure instanceof WorktreeArchiveHookFailedError)) {
-      throw failure
-    }
-    expect(failure.code).toBe(ARCHIVE_HOOK_FAILED_REMOVAL_CODE)
-    expect(failure.data).toEqual({
+    const refusal = asArchiveHookRefusal(failure)
+    expect(refusal.code).toBe(ARCHIVE_HOOK_FAILED_REMOVAL_CODE)
+    expect(refusal.data).toEqual({
       worktreePath: TEST_WORKTREE_PATH,
       outcome: 'exited',
       exitCode: 23,
@@ -97,11 +94,8 @@ describe('archive hook removal gate', () => {
       .removeManagedWorktree(TEST_WORKTREE_ID, { force: false, runHooks: true })
       .catch((error: unknown) => error)
 
-    expect(failure).toBeInstanceOf(WorktreeArchiveHookFailedError)
-    if (!(failure instanceof WorktreeArchiveHookFailedError)) {
-      throw failure
-    }
-    expect(failure.data).toEqual({
+    const refusal = asArchiveHookRefusal(failure)
+    expect(refusal.data).toEqual({
       worktreePath: TEST_WORKTREE_PATH,
       outcome: 'unverifiable',
       output: 'Hook timed out after 120000ms.'

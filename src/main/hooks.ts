@@ -14,9 +14,90 @@ import type { HookRuntimeTarget } from './hook-runtime-target'
 import type { OrcaHooks } from '../shared/orca-yaml-hook-types'
 import type { Repo } from '../shared/repo-types'
 import type { ProjectExecutionRuntimeResolution } from '../shared/project-execution-runtime'
-import { runHookScriptWithDeadline } from './hook-script-deadline'
+import { exec } from 'node:child_process'
 
 const HOOK_TIMEOUT = 120_000 // 2 minutes
+
+type HookProcessOutcome = { success: boolean; output: string; exitCode?: number }
+
+/**
+ * Turn a finished process into a hook verdict.
+ *
+ * Why `timedOut` decides before `code` (#19334): a hook that traps SIGTERM and exits 0 reports a
+ * zero exit for a run we cut off mid-archive. The exit code of something we stopped is not
+ * evidence it finished, so a timeout withholds the code and the removal gate reads that as
+ * `unverifiable` rather than as a pass.
+ */
+function classifyHookProcessResult(
+  result: { code: number | null; stdout: string; stderr: string; timedOut: boolean },
+  context: { hookName: string; cwd: string; timeoutMs: number }
+): HookProcessOutcome {
+  const streams = `${result.stdout}\n${result.stderr}`
+  if (result.timedOut) {
+    const message = `Hook timed out after ${context.timeoutMs}ms.`
+    console.error(`[hooks] ${context.hookName} hook failed in ${context.cwd}:`, message)
+    return { success: false, output: `${streams}\n${message}`.trim() }
+  }
+  if (result.code !== 0) {
+    const message = `Command failed with exit code ${result.code}.`
+    console.error(`[hooks] ${context.hookName} hook failed in ${context.cwd}:`, message)
+    return {
+      success: false,
+      output: `${streams}\n${message}`.trim(),
+      ...(typeof result.code === 'number' ? { exitCode: result.code } : {})
+    }
+  }
+  console.log(`[hooks] ${context.hookName} hook completed in ${context.cwd}`)
+  return { success: true, output: streams.trim() }
+}
+
+const SIGTERM_GRACE_MS = 2_000
+
+/** Signal the hook's whole process group where the platform has one, else just the child. */
+function terminateHookTree(
+  child: { pid?: number; kill: (signal: NodeJS.Signals) => boolean },
+  signal: NodeJS.Signals
+): void {
+  if (process.platform !== 'win32' && child.pid) {
+    try {
+      process.kill(-child.pid, signal)
+      return
+    } catch {
+      // Group already gone, or we never led it; fall through to the direct kill.
+    }
+  }
+  try {
+    child.kill(signal)
+  } catch {
+    // Already dead.
+  }
+}
+
+/** An `exec` failure: a string `code` (ENOENT) means it never started, so no exit was observed. */
+function hookProcessError(
+  error: Error,
+  stdout: string,
+  stderr: string,
+  context: { hookName: string; cwd: string }
+): HookProcessOutcome {
+  const code = 'code' in error ? error.code : undefined
+  console.error(`[hooks] ${context.hookName} hook failed in ${context.cwd}:`, error.message)
+  return {
+    success: false,
+    output: `${stdout}\n${stderr}\n${error.message}`.trim(),
+    ...(typeof code === 'number' ? { exitCode: code } : {})
+  }
+}
+
+/** A hook that never started reported no exit, so the code stays withheld. */
+function hookSpawnFailure(
+  error: unknown,
+  context: { hookName: string; cwd: string }
+): HookProcessOutcome {
+  const message = error instanceof Error ? error.message : String(error)
+  console.error(`[hooks] ${context.hookName} hook failed in ${context.cwd}:`, message)
+  return { success: false, output: message }
+}
 
 function getHookShell(): string | undefined {
   if (process.platform === 'win32') {
@@ -120,7 +201,9 @@ export function runHook(
   cwd: string,
   repo: Repo,
   hooksPath?: string,
-  projectRuntime?: ProjectExecutionRuntimeResolution | HookRuntimeTarget
+  projectRuntime?: ProjectExecutionRuntimeResolution | HookRuntimeTarget,
+  /** Deadline override. Production uses HOOK_TIMEOUT; tests use it to exercise the timeout path. */
+  timeoutMs: number = HOOK_TIMEOUT
   // Why (#19334): an absent exitCode means no exit was ever observed. The archive-hook removal
   // gate reads that as `unverifiable` rather than folding it into a zero.
 ): Promise<{ success: boolean; output: string; exitCode?: number }> {
@@ -167,57 +250,68 @@ export function runHook(
       shell: 'bash',
       cwd: wslInfo.linuxPath,
       env: guestEnv,
-      timeoutMs: HOOK_TIMEOUT
+      timeoutMs
     })
-      .then((result) => {
-        if (result.timedOut) {
-          const message = `Hook timed out after ${HOOK_TIMEOUT}ms.`
-          console.error(`[hooks] ${hookName} hook failed in ${cwd}:`, message)
-          return { success: false, output: `${result.stdout}\n${result.stderr}\n${message}`.trim() }
-        }
-        if (result.code !== 0) {
-          const message = `Command failed with exit code ${result.code}.`
-          console.error(`[hooks] ${hookName} hook failed in ${cwd}:`, message)
-          return {
-            success: false,
-            output: `${result.stdout}\n${result.stderr}\n${message}`.trim(),
-            ...(typeof result.code === 'number' ? { exitCode: result.code } : {})
-          }
-        }
-        console.log(`[hooks] ${hookName} hook completed in ${cwd}`)
-        return { success: true, output: `${result.stdout}\n${result.stderr}`.trim() }
-      })
-      .catch((error: unknown) => {
-        const message = error instanceof Error ? error.message : String(error)
-        console.error(`[hooks] ${hookName} hook failed in ${cwd}:`, message)
-        return { success: false, output: message }
-      })
+      .then((result) => classifyHookProcessResult(result, { hookName, cwd, timeoutMs }))
+      .catch((error: unknown) => hookSpawnFailure(error, { hookName, cwd }))
   }
 
   const shellHookEnv: NodeJS.ProcessEnv = { ...process.env, ...getSetupEnvVars(repo, cwd) }
   dropIncoherentCondaActivationEnv(shellHookEnv)
 
-  return runHookScriptWithDeadline({
-    script,
-    cwd,
-    shell: getHookShell(),
-    // Why: hooks run unattended; block Git Credential Manager's interactive prompt while keeping cached auth (issue #7652).
-    env: promptGuardShellEnv(shellHookEnv),
-    timeoutMs: HOOK_TIMEOUT
-  }).then((result) => {
-    if (result.success) {
-      console.log(`[hooks] ${hookName} hook completed in ${cwd}`)
-    } else {
-      console.error(`[hooks] ${hookName} hook failed in ${cwd}:`, result.output)
+  return new Promise<HookProcessOutcome>((resolve) => {
+    // Why we own the deadline (#19334): Node's `exec({ timeout })` SIGTERMs the child and then
+    // reports whatever it chose to do, so a hook that traps SIGTERM and exits 0 came back as a
+    // PASS — a hook cut off mid-archive, indistinguishable from one that finished. Settle on the
+    // deadline instead, and settle AT it, so a hook that traps and keeps running cannot hold a
+    // removal open. `exec` stays because it owns the per-platform shell invocation (`cmd.exe`
+    // wants `/d /s /c`, not `-c`), which is not this change's to re-derive.
+    let settled = false
+    // Declared before `exec` because its callback can fire synchronously (and does under test),
+    // which would otherwise hit the temporal dead zone on the timer below.
+    let deadline: NodeJS.Timeout | undefined
+    const settle = (result: HookProcessOutcome): void => {
+      if (settled) {
+        return
+      }
+      settled = true
+      if (deadline) {
+        clearTimeout(deadline)
+      }
+      resolve(result)
     }
-    // A clean run reports exitCode 0; the gate only reads the field on failure, and keeping it off
-    // the success shape preserves the existing contract.
-    return result.success
-      ? { success: true, output: result.output }
-      : {
-          success: false,
-          output: result.output,
-          ...(result.exitCode !== undefined ? { exitCode: result.exitCode } : {})
+    const child = exec(
+      script,
+      {
+        cwd,
+        shell: getHookShell(),
+        // Why: hooks run unattended; block Git Credential Manager's interactive prompt while keeping cached auth (issue #7652).
+        env: promptGuardShellEnv(shellHookEnv),
+        // Signal the whole group on POSIX: the script is a shell, and the work is its children.
+        ...(process.platform === 'win32' ? {} : { detached: true })
+      },
+      (error, stdout, stderr) => {
+        if (error) {
+          settle(hookProcessError(error, stdout, stderr, { hookName, cwd }))
+          return
         }
+        settle(
+          classifyHookProcessResult(
+            { code: 0, stdout, stderr, timedOut: false },
+            { hookName, cwd, timeoutMs }
+          )
+        )
+      }
+    )
+    deadline = setTimeout(() => {
+      settle(
+        classifyHookProcessResult(
+          { code: null, stdout: '', stderr: '', timedOut: true },
+          { hookName, cwd, timeoutMs }
+        )
+      )
+      terminateHookTree(child, 'SIGTERM')
+      setTimeout(() => terminateHookTree(child, 'SIGKILL'), SIGTERM_GRACE_MS).unref?.()
+    }, timeoutMs)
   })
 }

@@ -20,6 +20,15 @@ function makeRequest(params: unknown): RpcRequest {
   return { id: 'req-1', authToken: 'tok', method: 'worktree.rm', params }
 }
 
+/** The removal options every case forwards; only the resolved host differs. */
+const forwarded = (hostId?: string): Record<string, unknown> => ({
+  force: true,
+  runHooks: false,
+  allowUnverifiedPtyStop: false,
+  allowFailedArchiveHook: false,
+  ...(hostId ? { hostId } : {})
+})
+
 describe('worktree.rm host qualification', () => {
   it('routes an explicitly qualified removal to that host', async () => {
     const runtime = makeRuntime()
@@ -29,13 +38,7 @@ describe('worktree.rm host qualification', () => {
       makeRequest({ worktree: 'id:wt-1', hostId: 'local', force: true, runHooks: false })
     )
 
-    expect(runtime.removeManagedWorktree).toHaveBeenCalledWith('id:wt-1', {
-      force: true,
-      runHooks: false,
-      allowUnverifiedPtyStop: false,
-      allowFailedArchiveHook: false,
-      hostId: 'local'
-    })
+    expect(runtime.removeManagedWorktree).toHaveBeenCalledWith('id:wt-1', forwarded('local'))
     expect(response).toMatchObject({ ok: true, result: { removed: true } })
   })
 
@@ -52,13 +55,10 @@ describe('worktree.rm host qualification', () => {
       })
     )
 
-    expect(runtime.removeManagedWorktree).toHaveBeenCalledWith(`id:${WORKTREE_ID}`, {
-      force: true,
-      runHooks: false,
-      allowUnverifiedPtyStop: false,
-      allowFailedArchiveHook: false,
-      hostId: 'local'
-    })
+    expect(runtime.removeManagedWorktree).toHaveBeenCalledWith(
+      `id:${WORKTREE_ID}`,
+      forwarded('local')
+    )
     expect(response).toMatchObject({ ok: true, result: { removed: true } })
   })
 
@@ -75,13 +75,10 @@ describe('worktree.rm host qualification', () => {
       })
     )
 
-    expect(runtime.removeManagedWorktree).toHaveBeenCalledWith(`id:${WORKTREE_ID}`, {
-      force: true,
-      runHooks: false,
-      allowUnverifiedPtyStop: false,
-      allowFailedArchiveHook: false,
-      hostId: 'runtime:env-1'
-    })
+    expect(runtime.removeManagedWorktree).toHaveBeenCalledWith(
+      `id:${WORKTREE_ID}`,
+      forwarded('runtime:env-1')
+    )
   })
 
   it('fails closed when the repo id carries both spellings', async () => {
@@ -117,13 +114,10 @@ describe('worktree.rm host qualification', () => {
       })
     )
 
-    expect(runtime.removeManagedWorktree).toHaveBeenCalledWith(`id:${WORKTREE_ID}`, {
-      force: true,
-      runHooks: false,
-      allowUnverifiedPtyStop: false,
-      allowFailedArchiveHook: false,
-      hostId: 'ssh:target-a'
-    })
+    expect(runtime.removeManagedWorktree).toHaveBeenCalledWith(
+      `id:${WORKTREE_ID}`,
+      forwarded('ssh:target-a')
+    )
   })
 
   it.each([['bogus'], ['ssh:'], ['runtime:'], [''], [null], [42]])(
@@ -151,13 +145,7 @@ describe('worktree.rm host qualification', () => {
     )
 
     expect(runtime.showManagedWorktree).toHaveBeenCalledWith('id:wt-1')
-    expect(runtime.removeManagedWorktree).toHaveBeenCalledWith('id:wt-1', {
-      force: true,
-      runHooks: false,
-      allowUnverifiedPtyStop: false,
-      allowFailedArchiveHook: false,
-      hostId: 'local'
-    })
+    expect(runtime.removeManagedWorktree).toHaveBeenCalledWith('id:wt-1', forwarded('local'))
     expect(response).toMatchObject({ ok: true, result: { removed: true } })
   })
 
@@ -205,12 +193,7 @@ describe('worktree.rm host qualification', () => {
     expect(response).toMatchObject({ ok: true, result: { removed: true } })
     // Unqualified on purpose: removeManagedWorktree owns the stale-row path and
     // still refuses on its own if the id turns out to have two owners.
-    expect(runtime.removeManagedWorktree).toHaveBeenCalledWith('id:wt-gone', {
-      force: true,
-      runHooks: false,
-      allowUnverifiedPtyStop: false,
-      allowFailedArchiveHook: false
-    })
+    expect(runtime.removeManagedWorktree).toHaveBeenCalledWith('id:wt-gone', forwarded())
   })
 
   it('propagates a non-missing lookup failure instead of deleting unqualified', async () => {

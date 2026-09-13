@@ -72,6 +72,17 @@ export function formatArchiveHookOverride(override: ArchiveHookOverride): string
   ].join(' ')
 }
 
+/**
+ * Narrow an unknown rejection to the typed refusal, or rethrow it. This is the branch a real
+ * caller writes, so tests asserting on a refusal should go through it rather than re-deriving it.
+ */
+export function asArchiveHookRefusal(error: unknown): WorktreeArchiveHookFailedError {
+  if (error instanceof WorktreeArchiveHookFailedError) {
+    return error
+  }
+  throw error
+}
+
 /** Recognise the refusal on a surface that only has the message, e.g. a renderer toast. */
 export function isArchiveHookRemovalError(error: string): boolean {
   return error.includes(ARCHIVE_HOOK_FAILED_REMOVAL_PREFIX)

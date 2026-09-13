@@ -16,7 +16,8 @@ import { handlers, setupWorktreeHandlers, store } from './worktrees-test-harness
 import { mockKnownFeatureWorktree } from './worktrees-test-fixtures'
 import {
   ARCHIVE_HOOK_FAILED_REMOVAL_CODE,
-  WorktreeArchiveHookFailedError
+  asArchiveHookRefusal,
+  type WorktreeArchiveHookFailedError
 } from '../../shared/worktree/archive-hook-removal-gate'
 import type { RemoveWorktreeResult } from '../../shared/worktree/create-types'
 import type { RemoveWorktreeArgs } from './worktrees/ipc-context-schemas'
@@ -118,10 +119,7 @@ async function expectArchiveHookRefusal(
   try {
     await removeWorktreeViaIpc(args)
   } catch (error) {
-    if (error instanceof WorktreeArchiveHookFailedError) {
-      return error
-    }
-    throw error
+    return asArchiveHookRefusal(error)
   }
   throw new Error(`expected removal of ${args.worktreeId} to be refused by the archive hook`)
 }

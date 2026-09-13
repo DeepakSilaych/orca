@@ -20,7 +20,7 @@ const withArchiveHook = (present: boolean): void => {
 }
 import {
   ARCHIVE_HOOK_FAILED_REMOVAL_CODE,
-  WorktreeArchiveHookFailedError
+  asArchiveHookRefusal
 } from '../shared/worktree/archive-hook-removal-gate'
 
 // Why (#19334 / S1): the runtime's SSH path runs no archive hook. Silently deleting there would
@@ -62,13 +62,10 @@ describe('gateRemovalWhereArchiveHookCannotRun', () => {
       worktreePath: '/w/f',
       runHooks: true
     }).catch((error: unknown) => error)
-    expect(thrown).toBeInstanceOf(WorktreeArchiveHookFailedError)
-    if (!(thrown instanceof WorktreeArchiveHookFailedError)) {
-      throw thrown
-    }
-    expect(thrown.code).toBe(ARCHIVE_HOOK_FAILED_REMOVAL_CODE)
+    const refusal = asArchiveHookRefusal(thrown)
+    expect(refusal.code).toBe(ARCHIVE_HOOK_FAILED_REMOVAL_CODE)
     // Never `exited`: nothing ran, so nothing reported an exit to read.
-    expect(thrown.data).toMatchObject({ worktreePath: '/w/f', outcome: 'unverifiable' })
-    expect(thrown.data.exitCode).toBeUndefined()
+    expect(refusal.data).toMatchObject({ worktreePath: '/w/f', outcome: 'unverifiable' })
+    expect(refusal.data.exitCode).toBeUndefined()
   })
 })

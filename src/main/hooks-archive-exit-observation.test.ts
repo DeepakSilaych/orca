@@ -2,51 +2,61 @@ import { describe, expect, it, vi } from 'vitest'
 import type { Repo } from '../shared/repo-types'
 
 const { execMock } = vi.hoisted(() => ({ execMock: vi.fn() }))
-
 vi.mock('child_process', () => ({
   exec: execMock,
   execFileSync: vi.fn(),
   execFile: vi.fn(),
   spawn: vi.fn()
 }))
-// runHook resolves the script through this module; stub it so the test owns the hook definition.
 vi.mock('./effective-hook-config', () => ({
   getEffectiveHooksFromConfig: () => ({ scripts: { archive: 'do-the-archive' } })
 }))
 
 const REPO: Repo = { id: 'r', path: '/repo', displayName: 'r', badgeColor: '#000', addedAt: 0 }
 
-/** Drive runHook once with the error object `exec` would hand back for a given failure mode. */
-async function runArchiveWith(error: unknown): Promise<{ success: boolean; exitCode?: number }> {
+const execFailure = (code: unknown): Error => Object.assign(new Error('Command failed'), { code })
+
+/** Drive runHook once with the error object `exec` hands back for a given failure mode. */
+async function runArchiveWith(
+  error: Error | null
+): Promise<{ success: boolean; exitCode?: number }> {
   const { runHook } = await import('./hooks')
-  execMock.mockImplementationOnce((_script, _opts, cb) => cb(error, '', ''))
-  const result = await runHook('archive', '/repo/wt', REPO)
-  // Guard against a vacuous pass: if the mock ever stops intercepting, the real shell would run
-  // and this assertion, not the subtle ones below, is what fails.
+  execMock.mockImplementationOnce((_script, _opts, cb) => {
+    cb(error, '', '')
+    return { pid: 1234, kill: vi.fn() }
+  })
+  const outcome = await runHook('archive', '/repo/wt', REPO)
+  // Guard against a vacuous pass: if the mock ever stops intercepting, a real shell would run and
+  // this, rather than the subtle assertions below, is what fails.
   expect(execMock).toHaveBeenCalled()
-  return result
+  return outcome
 }
 
-// Why (#19334): the gate reads an ABSENT exitCode as `unverifiable`. That hinges on a
-// `typeof === 'number'` guard, because exec reports a spawn failure with a *string* code. A
-// looser null-check would file ENOENT as `exited "ENOENT"` and read it as an observed exit.
+// Why (#19334): an ABSENT exitCode is what the removal gate reads as `unverifiable`. The guard is
+// `typeof code === 'number'`, because `exec` reports a spawn failure with a *string* code — a
+// looser null-check would file ENOENT as `exited "ENOENT"`, reading a hook that never ran as one
+// that reported an exit. The timeout arm of the same contract is covered against a real shell in
+// hook-archive-timeout-observation.test.ts.
 describe('archive hook exit observation', () => {
-  it('reports an observed non-zero exit', async () => {
-    const err = Object.assign(new Error('Command failed'), { code: 23, signal: null })
-    await expect(runArchiveWith(err)).resolves.toMatchObject({ success: false, exitCode: 23 })
-  })
-
-  it('reports a shell "command not found" as the observed 127 it is', async () => {
-    const err = Object.assign(new Error('Command failed'), { code: 127, signal: null })
-    await expect(runArchiveWith(err)).resolves.toMatchObject({ success: false, exitCode: 127 })
+  it('passes a clean run through without an exit code', async () => {
+    await expect(runArchiveWith(null)).resolves.toEqual({ success: true, output: '' })
   })
 
   it.each([
-    ['killed by a signal', { code: null, signal: 'SIGKILL' }],
-    ['timed out', { code: null, signal: 'SIGTERM' }],
-    ['failed to spawn (string code)', { code: 'ENOENT', signal: null }]
-  ])('withholds the exit code when none was observed: %s', async (_label, shape) => {
-    const result = await runArchiveWith(Object.assign(new Error('Command failed'), shape))
+    ['a non-zero exit', 23],
+    ['a shell command-not-found', 127]
+  ])('reports %s as the observed exit it is', async (_label, code) => {
+    await expect(runArchiveWith(execFailure(code))).resolves.toMatchObject({
+      success: false,
+      exitCode: code
+    })
+  })
+
+  it.each([
+    ['was killed by a signal', null],
+    ['never started, so the code is a string', 'ENOENT']
+  ])('withholds the exit code when the hook %s', async (_label, code) => {
+    const result = await runArchiveWith(execFailure(code))
     expect(result.success).toBe(false)
     expect(result.exitCode).toBeUndefined()
   })
