@@ -109,7 +109,8 @@ function Directory({
   )
 }
 function Repository({ repo, props, view }: { repo: RepoStatus; props: Props; view: string }) {
-  const [expanded, setExpanded] = useState(true)
+  const [expanded, setExpanded] = useState(props.statuses.length === 1)
+  const [visibleCount, setVisibleCount] = useState(100)
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState(false)
   const action = async (action: string, path = '') => {
@@ -136,6 +137,7 @@ function Repository({ repo, props, view }: { repo: RepoStatus; props: Props; vie
     <section className="border-b pb-2">
       <button
         className="magi-row rounded-none py-2 text-xs font-medium"
+        aria-expanded={expanded}
         onClick={() => setExpanded(!expanded)}
       >
         {expanded ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
@@ -164,11 +166,13 @@ function Repository({ repo, props, view }: { repo: RepoStatus; props: Props; vie
           ) : (
             <>
               {(['staged', 'working'] as const).map((scope) => {
-                const rows = repo.files.filter((f) =>
-                  scope === 'staged'
-                    ? !['.', '?'].includes(f.index)
-                    : f.worktree !== '.' || f.untracked
-                )
+                const rows = repo.files
+                  .filter((f) =>
+                    scope === 'staged'
+                      ? !['.', '?'].includes(f.index)
+                      : f.worktree !== '.' || f.untracked
+                  )
+                  .sort((a, b) => Number(a.untracked) - Number(b.untracked))
                 return (
                   rows.length > 0 && (
                     <div key={scope}>
@@ -176,7 +180,7 @@ function Repository({ repo, props, view }: { repo: RepoStatus; props: Props; vie
                         {scope === 'staged' ? 'Staged changes' : 'Changes'}{' '}
                         <span>{rows.length}</span>
                       </p>
-                      {rows.map((file) => {
+                      {rows.slice(0, visibleCount).map((file) => {
                         const code = scope === 'staged' ? file.index : file.worktree
                         const Icon = getFileTypeIcon(file.path)
                         const color = file.conflict
@@ -216,6 +220,17 @@ function Repository({ repo, props, view }: { repo: RepoStatus; props: Props; vie
                           </div>
                         )
                       })}
+                      {rows.length > visibleCount && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="mx-2"
+                          onClick={() => setVisibleCount((count) => count + 100)}
+                        >
+                          Show next {Math.min(100, rows.length - visibleCount)} of{' '}
+                          {rows.length - visibleCount} remaining
+                        </Button>
+                      )}
                     </div>
                   )
                 )

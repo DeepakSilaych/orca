@@ -1,3 +1,4 @@
+import { UpdateSettings } from './update-settings'
 import {
   Dialog,
   DialogContent,
@@ -16,7 +17,7 @@ import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 export type Appearance = { theme: string; fontSize: number; compact: boolean }
-export function AppearanceSettings({
+export function MagiSettings({
   value,
   update,
   close
@@ -36,8 +37,8 @@ export function AppearanceSettings({
     >
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Appearance</DialogTitle>
-          <DialogDescription>Workspace chrome and terminal readability.</DialogDescription>
+          <DialogTitle>Settings</DialogTitle>
+          <DialogDescription>Appearance and application updates.</DialogDescription>
         </DialogHeader>
         <div className="space-y-5">
           <div className="flex items-center justify-between">
@@ -78,7 +79,21 @@ export function AppearanceSettings({
             />
           </div>
         </div>
+        <UpdateSettings />
       </DialogContent>
     </Dialog>
   )
+}
+
+export function readAppearance(): Appearance {
+  try {
+    const saved = JSON.parse(localStorage.getItem('magi.appearance') || '{}')
+    return {
+      theme: saved.theme === 'light' ? 'light' : 'dark',
+      fontSize: Math.max(10, Math.min(22, Number(saved.fontSize) || 13)),
+      compact: saved.compact === true
+    }
+  } catch {
+    return { theme: 'dark', fontSize: 13, compact: false }
+  }
 }

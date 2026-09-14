@@ -1,9 +1,14 @@
+import { ReorderList } from './reorder-list'
+import { terminalTabs } from '../../../shared/magi/types'
+import { RenameItem } from './rename-item'
 import { Archive, FolderGit2, Plus, TerminalSquare, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import type { Workspace, Session } from '../../../shared/magi/types'
 import type { OpenFile } from './editor'
 import type { FormKind } from './forms'
 export function TerminalTabs({
+  host,
+  refresh,
   workspace,
   terminal,
   file,
@@ -14,6 +19,8 @@ export function TerminalTabs({
   setForm,
   setConfirm
 }: {
+  host: string
+  refresh: () => void
   workspace?: Workspace
   terminal?: Session
   file?: OpenFile
@@ -24,22 +31,49 @@ export function TerminalTabs({
   setForm: (form: FormKind) => void
   setConfirm: (kind: 'archive' | 'terminal') => void
 }) {
+  const tabs = terminalTabs(workspace?.terminals || [])
   return (
-    <div className="flex h-11 shrink-0 items-center overflow-x-auto border-b">
-      <div className="flex h-full min-w-0 flex-1 items-center">
-        {workspace?.terminals.map((t) => (
-          <button
-            key={t.id}
-            onClick={() => {
-              setTerminalId(t.id)
-              setFile(undefined)
-            }}
-            className={`flex h-full shrink-0 items-center gap-2 border-r px-4 text-xs ${terminal?.id === t.id && !file ? 'border-b-2 border-b-foreground bg-accent' : 'text-muted-foreground hover:bg-accent'}`}
-          >
-            <TerminalSquare className="size-3.5" />
-            {t.name}
-          </button>
-        ))}
+    <div className="flex h-11 shrink-0 items-center overflow-hidden border-b">
+      <div className="flex h-full min-w-0 flex-1 items-center overflow-x-auto scrollbar-sleek">
+        <ReorderList
+          items={tabs}
+          horizontal
+          disabled={busy}
+          reorder={async (ids) => {
+            await window.magi.request(host, 'terminal_reorder', {
+              workspace: workspace?.id,
+              ids: ids.map((id) => {
+                const t = tabs.find((t) => t.id === id)!
+                return t.tab_id || t.id
+              })
+            })
+            refresh()
+          }}
+        >
+          {(t) => (
+            <RenameItem
+              key={t.id}
+              name={t.name}
+              kind="terminal"
+              selected={(terminal?.tab_id || terminal?.id) === (t.tab_id || t.id) && !file}
+              enabled={!busy}
+              select={() => {
+                setTerminalId(t.id)
+                setFile(undefined)
+              }}
+              rename={async (name) => {
+                await window.magi.request(host, 'terminal_rename', {
+                  workspace: workspace?.id,
+                  terminal: t.id,
+                  name
+                })
+                refresh()
+              }}
+              className={`flex h-full shrink-0 items-center gap-2 border-r px-4 text-xs ${(terminal?.tab_id || terminal?.id) === (t.tab_id || t.id) && !file ? 'border-b-2 border-b-foreground bg-accent' : 'text-muted-foreground hover:bg-accent'}`}
+              leading={<TerminalSquare className="size-3.5" />}
+            />
+          )}
+        </ReorderList>
         {workspace && (
           <Button
             aria-label="New terminal"
@@ -54,7 +88,7 @@ export function TerminalTabs({
         )}
       </div>
       {workspace && (
-        <>
+        <div className="flex h-full shrink-0 items-center border-l bg-background px-1">
           <Button variant="ghost" size="sm" onClick={() => setForm('attach')}>
             <FolderGit2 />
             Attach repos
@@ -81,7 +115,7 @@ export function TerminalTabs({
               <X />
             </Button>
           )}
-        </>
+        </div>
       )}
     </div>
   )

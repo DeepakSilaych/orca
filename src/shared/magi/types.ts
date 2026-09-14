@@ -7,13 +7,21 @@ export type Repo = {
   branch?: string
   base?: string
 }
-export type Session = { id: string; name: string; cwd: string }
+export type Session = { id: string; name: string; cwd: string; tab_id?: string }
+export type PaneLayout =
+  | { terminal: string }
+  | { id: string; axis: 'columns' | 'rows'; ratio: number; first: PaneLayout; second: PaneLayout }
+export const terminalTabs = (sessions: Session[]): Session[] =>
+  sessions.filter(
+    (t, i) => sessions.findIndex((s) => (s.tab_id || s.id) === (t.tab_id || t.id)) === i
+  )
 export type Workspace = {
   id: string
   name: string
   path: string
   repos: Repo[]
   terminals: Session[]
+  layouts?: Record<string, PaneLayout>
   ticket: string | null
   permanent?: boolean
 }
@@ -59,7 +67,28 @@ export type TerminalEvent = {
   data?: string
   state?: 'live' | 'unverifiable' | 'exited'
 }
+export type WorkspaceShortcut =
+  | 'split-right'
+  | 'split-down'
+  | 'new-workspace'
+  | 'new-terminal'
+  | 'previous-workspace'
+  | 'next-workspace'
+  | 'previous-terminal'
+  | 'next-terminal'
+  | 'close-tab'
+export type UpdateState = {
+  phase: 'idle' | 'unsupported' | 'checking' | 'current' | 'downloading' | 'restarting' | 'error'
+  version: string
+  message: string
+  releaseUrl: string
+  percent?: number
+}
 export type MagiApi = {
+  getUpdate: () => Promise<UpdateState>
+  runUpdate: () => Promise<UpdateState>
+  onUpdate: (listener: (state: UpdateState) => void) => () => void
+  onShortcut: (listener: (shortcut: WorkspaceShortcut) => void) => () => void
   request: <T>(host: string, op: string, args?: Record<string, unknown>) => Promise<T>
   attach: (
     host: string,

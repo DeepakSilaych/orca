@@ -1,3 +1,6 @@
+import magiIcon from '../../../../resources/magi/brand/icon.svg'
+import { closeActiveTab } from './close-active-tab'
+import { useWorkspaceShortcuts } from './shortcuts'
 import { TerminalTabs } from './terminal-tabs'
 import { SessionConfirmation } from './session-confirmation'
 import { WorkspaceSidebar } from './sidebar'
@@ -8,23 +11,11 @@ import { Button } from '@/components/ui/button'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import type { Host, Snapshot, RepoStatus, Integrations } from '../../../shared/magi/types'
 import { WorkspaceForm, type FormKind } from './forms'
-import { AppearanceSettings, type Appearance } from './settings'
-import { SessionTerminal } from './terminal'
+import { MagiSettings, readAppearance } from './settings'
+import { TerminalLayout } from './terminal-layout'
 import { Repositories } from './repositories'
 import type { OpenFile } from './editor'
 const FileViewer = lazy(() => import('./editor').then((module) => ({ default: module.FileViewer })))
-function readAppearance(): Appearance {
-  try {
-    const saved = JSON.parse(localStorage.getItem('magi.appearance') || '{}')
-    return {
-      theme: saved.theme === 'light' ? 'light' : 'dark',
-      fontSize: Math.max(10, Math.min(22, Number(saved.fontSize) || 13)),
-      compact: saved.compact === true
-    }
-  } catch {
-    return { theme: 'dark', fontSize: 13, compact: false }
-  }
-}
 export function MagiShell() {
   const [host, setHost] = useState('local')
   const [hosts, setHosts] = useState<Host[]>([])
@@ -169,12 +160,17 @@ export function MagiShell() {
       setBusy(false)
     }
   }
-  const terminalNew = async () => {
+  const terminalNew = async (axis?: 'columns' | 'rows') => {
     setBusy(true)
     try {
-      const result = await window.magi.request<{ id: string }>(host, 'terminal_new', {
-        workspace: workspaceId
-      })
+      const result = await window.magi.request<{ id: string }>(
+        host,
+        axis ? 'terminal_split' : 'terminal_new',
+        {
+          ...(axis ? { axis, terminal: terminal?.id } : {}),
+          workspace: workspaceId
+        }
+      )
       setTerminalId(result.id)
       setFile(undefined)
       refresh()
@@ -184,6 +180,35 @@ export function MagiShell() {
       setBusy(false)
     }
   }
+  useWorkspaceShortcuts({
+    newWorkspace: () => setForm('workspace'),
+    newTerminal: terminalNew,
+    split: terminalNew,
+    disabled: busy || loading || !!form || settings || !!confirm,
+    workspaces:
+      snapshot?.workspaces.filter((w) => w.name.toLowerCase().includes(query.toLowerCase())) || [],
+    workspace,
+    terminal,
+    selectWorkspace,
+    report,
+    selectTerminal: (id) => {
+      setTerminalId(id)
+      setFile(undefined)
+    },
+    closeTab: () =>
+      closeActiveTab({
+        file,
+        workspace,
+        terminal,
+        host,
+        snapshot,
+        setFile,
+        setBusy,
+        setSnapshot,
+        setTerminalId,
+        selectWorkspace
+      })
+  })
   return (
     <TooltipProvider>
       <div
@@ -197,6 +222,7 @@ export function MagiShell() {
                 : 'text-sm font-semibold'
             }
           >
+            <img src={magiIcon} alt="" className="mr-2 inline-block size-5" />
             Magi
           </span>
           <span className="ml-3 text-xs text-muted-foreground">
@@ -206,6 +232,7 @@ export function MagiShell() {
         </header>
         <div className="flex min-h-0 flex-1">
           <WorkspaceSidebar
+            refresh={refresh}
             host={host}
             hosts={hosts}
             snapshot={snapshot}
@@ -223,6 +250,8 @@ export function MagiShell() {
           />
           <main className="flex min-w-0 flex-1 flex-col">
             <TerminalTabs
+              host={host}
+              refresh={refresh}
               workspace={workspace}
               terminal={terminal}
               file={file}
@@ -266,9 +295,11 @@ export function MagiShell() {
                   />
                 </Suspense>
               ) : terminal && workspace ? (
-                <SessionTerminal
+                <TerminalLayout
+                  select={setTerminalId}
+                  refresh={refresh}
                   host={host}
-                  workspace={workspace.id}
+                  workspace={workspace}
                   terminal={terminal.id}
                   fontSize={appearance.fontSize}
                   theme={appearance.theme}
@@ -331,7 +362,7 @@ export function MagiShell() {
           />
         )}
         {settings && (
-          <AppearanceSettings
+          <MagiSettings
             value={appearance}
             update={setAppearance}
             close={() => setSettings(false)}

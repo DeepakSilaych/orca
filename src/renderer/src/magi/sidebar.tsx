@@ -1,3 +1,5 @@
+import { ReorderList } from './reorder-list'
+import { RenameItem } from './rename-item'
 import {
   Monitor,
   Server,
@@ -28,7 +30,8 @@ export function WorkspaceSidebar({
   selectHost,
   selectWorkspace,
   setForm,
-  openSettings
+  openSettings,
+  refresh
 }: {
   host: string
   hosts: Host[]
@@ -39,6 +42,7 @@ export function WorkspaceSidebar({
   selectHost: (host: string) => void
   selectWorkspace: (id: string) => void
   setForm: (kind: FormKind) => void
+  refresh: () => void
   openSettings: () => void
 }) {
   return (
@@ -93,27 +97,43 @@ export function WorkspaceSidebar({
         </Button>
       </div>
       <div className="min-h-0 flex-1 overflow-auto scrollbar-sleek px-2">
-        {snapshot?.workspaces
-          .filter((w) => w.name.toLowerCase().includes(query.toLowerCase()))
-          .map((w) => (
-            <button
+        <ReorderList
+          items={(snapshot?.workspaces || []).filter((w) =>
+            w.name.toLowerCase().includes(query.toLowerCase())
+          )}
+          disabled={!!query}
+          reorder={async (ids) => {
+            await window.magi.request(host, 'workspace_reorder', { ids })
+            refresh()
+          }}
+        >
+          {(w) => (
+            <RenameItem
               key={w.id}
+              name={w.name}
+              kind="workspace"
+              selected={w.id === workspaceId}
               className="magi-row py-2 text-sm"
-              aria-selected={w.id === workspaceId}
-              onClick={() => selectWorkspace(w.id)}
-            >
-              <TerminalSquare className="size-4 shrink-0 text-muted-foreground" />
-              <span className="min-w-0 flex-1 truncate">{w.name}</span>
-              {w.permanent ? (
-                <LockKeyhole
-                  aria-label="Permanent workspace"
-                  className="size-3 text-muted-foreground"
-                />
-              ) : (
-                <span className="text-xs text-muted-foreground">{w.repos.length || ''}</span>
-              )}
-            </button>
-          ))}
+              enabled={!w.permanent}
+              select={() => selectWorkspace(w.id)}
+              rename={async (name) => {
+                await window.magi.request(host, 'workspace_rename', { workspace: w.id, name })
+                refresh()
+              }}
+              leading={<TerminalSquare className="size-4 shrink-0 text-muted-foreground" />}
+              trailing={
+                w.permanent ? (
+                  <LockKeyhole
+                    aria-label="Permanent workspace"
+                    className="size-3 text-muted-foreground"
+                  />
+                ) : (
+                  <span className="text-xs text-muted-foreground">{w.repos.length || ''}</span>
+                )
+              }
+            />
+          )}
+        </ReorderList>
       </div>
       <div className="space-y-1 border-t p-2">
         <Button
@@ -128,7 +148,7 @@ export function WorkspaceSidebar({
         </Button>
         <Button variant="ghost" className="w-full justify-start" size="sm" onClick={openSettings}>
           <Settings2 />
-          Appearance
+          Settings
         </Button>
       </div>
     </aside>

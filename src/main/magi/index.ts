@@ -1,9 +1,10 @@
+import { createUpdates } from './updates'
 import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from 'electron'
 import { join, resolve } from 'node:path'
 import { mkdirSync } from 'node:fs'
 import { spawn, type IPty } from 'node-pty'
 import { Hosts, quote, sshOptions } from './host-client'
-import type { TerminalEvent } from '../../shared/magi/types'
+import type { TerminalEvent, WorkspaceShortcut } from '../../shared/magi/types'
 
 const profile = process.env.MAGI_USER_DATA_PATH || join(app.getPath('appData'), 'magi-orca')
 mkdirSync(profile, { recursive: true })
@@ -51,6 +52,12 @@ const operations = new Set([
   'workspace_create',
   'repo_attach',
   'workspace_archive',
+  'workspace_rename',
+  'terminal_rename',
+  'terminal_split',
+  'terminal_resize',
+  'terminal_reorder',
+  'workspace_reorder',
   'terminal_new',
   'terminal_remove',
   'status',
@@ -173,9 +180,42 @@ if (ownsLock) {
     }
   })
   app.whenReady().then(() => {
+    const updates = createUpdates((state) => {
+      if (window && !window.isDestroyed()) {
+        window.webContents.send('magi:update', state)
+      }
+    })
+    ipcMain.handle('magi:update:get', (event) => {
+      authorize(event)
+      return updates.get()
+    })
+    ipcMain.handle('magi:update:run', (event) => {
+      authorize(event)
+      return updates.run()
+    })
     Menu.setApplicationMenu(
       Menu.buildFromTemplate([
         { label: 'Magi', submenu: [{ role: 'about' }, { type: 'separator' }, { role: 'quit' }] },
+        {
+          label: 'Workspace',
+          submenu: (
+            [
+              ['Split terminal vertically', 'CmdOrCtrl+D', 'split-right'],
+              ['Split terminal horizontally', 'CmdOrCtrl+Shift+D', 'split-down'],
+              ['New workspace', 'CmdOrCtrl+N', 'new-workspace'],
+              ['New terminal', 'CmdOrCtrl+T', 'new-terminal'],
+              ['Previous workspace', 'CmdOrCtrl+Up', 'previous-workspace'],
+              ['Next workspace', 'CmdOrCtrl+Down', 'next-workspace'],
+              ['Previous terminal', 'CmdOrCtrl+Left', 'previous-terminal'],
+              ['Next terminal', 'CmdOrCtrl+Right', 'next-terminal'],
+              ['Close tab or empty workspace', 'CmdOrCtrl+W', 'close-tab']
+            ] satisfies [string, string, WorkspaceShortcut][]
+          ).map(([label, accelerator, shortcut]) => ({
+            label,
+            accelerator,
+            click: () => window?.webContents.send('magi:shortcut', shortcut)
+          }))
+        },
         { role: 'editMenu' },
         {
           label: 'View',
@@ -204,6 +244,35 @@ if (ownsLock) {
         contextIsolation: true,
         nodeIntegration: false,
         sandbox: true
+      }
+    })
+    window.webContents.on('before-input-event', (event, input) => {
+      const modifier =
+        process.platform === 'darwin' ? input.meta && !input.control : input.control && !input.meta
+      if (
+        input.type !== 'keyDown' ||
+        !modifier ||
+        input.alt ||
+        (input.shift && input.key.toLowerCase() !== 'd')
+      ) {
+        return
+      }
+      const keys: Record<string, WorkspaceShortcut> = {
+        ArrowUp: 'previous-workspace',
+        ArrowDown: 'next-workspace',
+        ArrowLeft: 'previous-terminal',
+        ArrowRight: 'next-terminal',
+        n: 'new-workspace',
+        t: 'new-terminal',
+        d: input.shift ? 'split-down' : 'split-right',
+        w: 'close-tab'
+      }
+      const shortcut = keys[input.key.length === 1 ? input.key.toLowerCase() : input.key]
+      if (shortcut) {
+        event.preventDefault()
+        if (!input.isAutoRepeat) {
+          window?.webContents.send('magi:shortcut', shortcut)
+        }
       }
     })
     window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))

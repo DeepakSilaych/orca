@@ -163,7 +163,9 @@
     "repro:live-remote-bulk-open-freeze": "node config/scripts/live-remote-bulk-open-freeze-repro.mjs",
     "repro:live-remote-realistic-freeze": "node config/scripts/live-remote-realistic-freeze-repro.mjs",
     "tc:magi": "tsc --noEmit -p config/tsconfig.magi.json && tsc --noEmit -p config/tsconfig.node.json",
-    "test:magi": "python3 -m unittest discover -s resources/magi/tests -v"
+    "test:magi": "python3 -m unittest discover -s resources/magi/tests -v",
+    "build:magi": "electron-vite build --config magi.vite.config.ts",
+    "release:magi:mac": "pnpm run build:magi && node config/scripts/stage-magi.cjs && node config/scripts/package-magi.cjs"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "0.3.251",

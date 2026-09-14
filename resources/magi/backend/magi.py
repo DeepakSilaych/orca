@@ -229,7 +229,8 @@ class Backend:
                 ws = json.loads(f.read_text())
                 if not ws.get("archived"): workspaces.append(ws)
             except (OSError, ValueError) as e: errors.append(str(e))
-        workspaces.sort(key=lambda w: (w["id"] != "genral", w["created"]))
+        order = config.get("workspace_order", [])
+        workspaces.sort(key=lambda w: (order.index(w["id"]) if w["id"] in order else len(order), w["id"] != "genral", w["created"]))
         remotes = []
         sess_config = Path(os.environ.get("SESS_DIR", str(Path.home() / ".sess"))) / "remote"
         if sess_config.exists():
@@ -336,6 +337,31 @@ class Backend:
             self.context(ws)
             return row
 
+    def workspace_rename(self, workspace, name, **_):
+        name = name.strip()
+        if not name or len(name) > 120 or any(ord(c) < 32 for c in name):
+            raise ValueError("Workspace name must be 1–120 characters without control characters")
+        with self.lock():
+            ws = self.ws(workspace)
+            if workspace == "genral" or ws.get("permanent"):
+                raise ValueError("Genral's name is permanent")
+            ws["name"] = name
+            self.save_ws(ws)
+            self.context(ws)
+        return ws
+
+    def terminal_rename(self, workspace, terminal, name, **_):
+        name = name.strip()
+        if not name or len(name) > 120 or any(ord(c) < 32 for c in name):
+            raise ValueError("Terminal name must be 1–120 characters without control characters")
+        with self.lock():
+            ws = self.ws(workspace)
+            t = next((t for t in ws["terminals"] if t["id"] == terminal), None)
+            if not t: raise ValueError("Unknown terminal")
+            t["name"] = name
+            self.save_ws(ws)
+        return t
+
     def workspace_archive(self, workspace, **_):
         with self.lock():
             ws = self.ws(workspace)
@@ -354,6 +380,70 @@ class Backend:
             ws["terminals"].append(t)
             self.save_ws(ws)
             return t
+
+    def workspace_reorder(self, ids, **_):
+        with self.lock():
+            current = [w["id"] for w in self.snapshot()["workspaces"]]
+            if len(ids) != len(set(ids)) or set(ids) != set(current):
+                raise ValueError("Workspace list changed. Refresh and reorder again.")
+            config = self.config()
+            config["workspace_order"] = ids
+            atomic(self.config_path, config)
+        return {"ids": ids}
+
+    def terminal_reorder(self, workspace, ids, **_):
+        with self.lock():
+            ws = self.ws(workspace)
+            groups = list(dict.fromkeys(t.get("tab_id", t["id"]) for t in ws["terminals"]))
+            if len(ids) != len(set(ids)) or set(ids) != set(groups):
+                raise ValueError("Terminal list changed. Refresh and reorder again.")
+            ws["terminals"].sort(key=lambda t: ids.index(t.get("tab_id", t["id"])))
+            self.save_ws(ws)
+        return {"ids": ids}
+
+    def terminal_split(self, workspace, terminal, axis="columns", **_):
+        if axis not in ("columns", "rows"): raise ValueError("Invalid split direction")
+        with self.lock():
+            ws = self.ws(workspace)
+            source = next((t for t in ws["terminals"] if t["id"] == terminal), None)
+            if not source: raise ValueError("Unknown terminal")
+            cwd = source["cwd"]
+            if source.get("started"):
+                cwd = text(run(["tmux", "display-message", "-p", "-t", "=magi-" + terminal + ":", "#{pane_current_path}"]))
+                if not Path(cwd).is_dir(): raise ValueError("Terminal directory is unavailable")
+            tab = source.get("tab_id", source["id"])
+            layouts = ws.setdefault("layouts", {})
+            tree = layouts.get(tab, {"terminal": source["id"]})
+            t = {"id": uuid.uuid4().hex[:12], "name": "Terminal " + str(len(ws["terminals"]) + 1), "cwd": cwd, "tab_id": tab}
+            found = False
+            def split(node):
+                nonlocal found
+                if node.get("terminal") == terminal:
+                    found = True
+                    return {"id": uuid.uuid4().hex[:12], "axis": axis, "ratio": 0.5, "first": node, "second": {"terminal": t["id"]}}
+                if "terminal" in node: return node
+                return {**node, "first": split(node["first"]), "second": split(node["second"])}
+            layouts[tab] = split(tree)
+            if not found: raise ValueError("Pane layout changed. Refresh and retry.")
+            source["tab_id"] = tab
+            ws["terminals"].insert(ws["terminals"].index(source) + 1, t)
+            self.save_ws(ws)
+        return t
+
+    def terminal_resize(self, workspace, node, ratio, **_):
+        ratio = float(ratio)
+        if not 0.1 <= ratio <= 0.9: raise ValueError("Split ratio must be between 0.1 and 0.9")
+        with self.lock():
+            ws = self.ws(workspace)
+            def resize(tree):
+                if "terminal" in tree: return False
+                if tree["id"] == node:
+                    tree["ratio"] = ratio
+                    return True
+                return resize(tree["first"]) or resize(tree["second"])
+            if not any(resize(tree) for tree in ws.get("layouts", {}).values()): raise ValueError("Split no longer exists")
+            self.save_ws(ws)
+        return {"ratio": ratio}
 
     def terminal_prepare(self, workspace, terminal, **_):
         with self.lock():
@@ -383,7 +473,18 @@ class Backend:
                 args = ["tmux", "new-session", "-d", "-s", session, "-c", t["cwd"]]
                 for k in ("MAGI_ROOT", "MAGI_WORKSPACE", "PATH", "TERM"):
                     args += ["-e", k + "=" + env[k]]
-                args += [shell, "-l"]
+                resume = t.get("agent_resume")
+                if resume:
+                    agent = resume.get("agent")
+                    if agent not in ("codex", "claude"): raise ValueError("Unsupported imported agent")
+                    session_id = resume.get("session_id")
+                    if session_id:
+                        if not re.fullmatch(r"[a-fA-F0-9-]{36}", session_id): raise ValueError("Invalid imported session ID")
+                        command = [agent, "resume" if agent == "codex" else "--resume", session_id]
+                    else: command = [agent]
+                    command_text = " ".join(shlex.quote(arg) for arg in command)
+                    args += [shell, "-lic", command_text + "; exec " + shlex.quote(shell) + " -l"]
+                else: args += [shell, "-l"]
                 run(args, env=env)
                 run(["tmux", "set-option", "-t", session, "history-limit", "10000"])
             # sess handles attach/persistence, using isolated state with no default remote.
@@ -396,6 +497,11 @@ class Backend:
             if not any(t["id"] == terminal for t in ws["terminals"]): raise ValueError("Unknown terminal")
             run(["tmux", "kill-session", "-t", "=magi-" + ident(terminal)], ok=(0, 1))
             ws["terminals"] = [t for t in ws["terminals"] if t["id"] != terminal]
+            def prune(tree):
+                if "terminal" in tree: return None if tree["terminal"] == terminal else tree
+                first, second = prune(tree["first"]), prune(tree["second"])
+                return {**tree, "first": first, "second": second} if first and second else first or second
+            ws["layouts"] = {key: tree for key, value in ws.get("layouts", {}).items() if (tree := prune(value))}
             self.save_ws(ws)
         return {"closed": True}
 
@@ -541,7 +647,7 @@ class Backend:
         return result
 
     def dispatch(self, op, args=None):
-        allowed = {"snapshot", "preferences_get", "preferences_set", "host_add", "repo_register", "branches", "workspace_create", "repo_attach", "workspace_archive", "terminal_new", "terminal_prepare", "terminal_remove", "status", "files", "file", "diff", "diff_content", "git_action", "ticket_attach", "integrations", "install_cli"}
+        allowed = {"terminal_split", "terminal_resize", "terminal_reorder", "workspace_reorder", "snapshot", "preferences_get", "preferences_set", "host_add", "repo_register", "branches", "workspace_create", "repo_attach", "workspace_archive", "workspace_rename", "terminal_rename", "terminal_new", "terminal_prepare", "terminal_remove", "status", "files", "file", "diff", "diff_content", "git_action", "ticket_attach", "integrations", "install_cli"}
         if op not in allowed: raise ValueError("Unknown operation: " + op)
         return getattr(self, op)(**(args or {}))
 
@@ -566,7 +672,7 @@ def main():
     args, extras = parser.parse_known_args()
     if args.rpc: return rpc(Backend(args.root))
     sub = argparse.ArgumentParser(add_help=False)
-    for opt in ("repo", "branch", "new-branch", "base", "path", "url", "name", "host", "ssh", "cwd", "scope", "directory", "message"):
+    for opt in ("repo", "branch", "new-branch", "base", "path", "url", "name", "terminal", "axis", "host", "ssh", "cwd", "scope", "directory", "message"):
         sub.add_argument("--" + opt)
     for opt in ("blank", "utility"):
         sub.add_argument("--" + opt, action="store_true")
@@ -575,7 +681,7 @@ def main():
     words = args.words
     if not words: parser.print_help(); return
     backend = Backend(args.root)
-    commands = {("workspace", "list"): "snapshot", ("workspace", "create"): "workspace_create", ("workspace", "archive"): "workspace_archive", ("repo", "register"): "repo_register", ("repo", "attach"): "repo_attach", ("repo", "list"): "snapshot", ("terminal", "new"): "terminal_new", ("ticket", "attach"): "ticket_attach", ("host", "add"): "host_add"}
+    commands = {("terminal", "split"): "terminal_split",("workspace", "rename"): "workspace_rename", ("terminal", "rename"): "terminal_rename", ("workspace", "list"): "snapshot", ("workspace", "create"): "workspace_create", ("workspace", "archive"): "workspace_archive", ("repo", "register"): "repo_register", ("repo", "attach"): "repo_attach", ("repo", "list"): "snapshot", ("terminal", "new"): "terminal_new", ("ticket", "attach"): "ticket_attach", ("host", "add"): "host_add"}
     op = commands.get(tuple(words[:2]), words[0])
     positional = words[2:]
     if args.workspace: options["workspace"] = args.workspace

@@ -46,7 +46,7 @@ Lazy worktrees are created explicitly by this CLI, not by intercepting arbitrary
 
 ## UI retained
 
-Orca's canonical CSS theme, shadcn/Radix controls, file-type icons, and Monaco editor/diff infrastructure are reused. The large original single-repo panel controllers depend on Orca's full store; Magi supplies focused host-aware controllers and multi-repo file/change lists instead. Xterm mounts only the selected session. Monaco is loaded only when a file or diff is opened. Git status refreshes while visible, and PR/Linear results are cached.
+Orca's canonical CSS theme, shadcn/Radix controls, file-type icons, and Monaco editor/diff infrastructure are reused. The large original single-repo panel controllers depend on Orca's full store; Magi supplies focused host-aware controllers and multi-repo file/change lists instead. Xterm mounts only the selected tab’s terminal panes. Monaco is loaded only when a file or diff is opened. Git status refreshes while visible, and PR/Linear results are cached.
 
 Appearance settings contain only dark/light theme, terminal font size, and compact sidebar rows. Files/diffs are read-only; changes, staging, unstaging, and commits are scoped to their individual repository. PR state and an explicitly attached Linear ticket appear in the bottom bar. Live Linear state requires `LINEAR_API_KEY` on the host; automatic ticket extraction from PR text is not implemented.
 
@@ -59,3 +59,33 @@ Appearance settings contain only dark/light theme, terminal font size, and compa
 - `local-vm`: actual SSH session, host-local CLI attached two worktrees, inspected remote diff, switched away/back; shell PID remained 3648343 throughout that smoke test. Temporary test sessions are cleaned up separately from user sessions.
 
 Release signing, distribution packaging, and native Windows support remain separate from this local v1.
+
+## Terminal layout and CLI names
+
+Cmd+D and Cmd+Shift+D split the focused terminal vertically and horizontally; the same bindings use Ctrl outside macOS. Every pane has its own sess owner. Layout trees reference stable terminal IDs and save divider ratios in the workspace manifest. Tabs group related panes with `tab_id`; reordering a tab moves the entire group. Cmd+W closes the focused leaf and collapses its parent, preserving sibling sessions.
+
+```sh
+magi workspace rename --workspace WORKSPACE_ID --name 'API investigation'
+magi terminal rename --workspace WORKSPACE_ID --terminal TERMINAL_ID --name 'Claude API'
+magi terminal split --workspace WORKSPACE_ID --terminal TERMINAL_ID --axis columns
+magi terminal split --workspace WORKSPACE_ID --terminal TERMINAL_ID --axis rows
+```
+
+From an agent launched in Magi, `MAGI_WORKSPACE` supplies the workspace automatically. A CLI-created split is attached when the desktop refreshes and displays that tab.
+
+## Releases
+
+`pnpm release:magi:mac` builds and stages the app, then creates the native Apple Silicon DMG, ZIP and update metadata under `dist-magi/`. The release identity is `me.deepaksilaych.magi`; the update feed is `DeepakSilaych/orca`. Never publish upstream Orca artifacts to this feed as Magi updates.
+
+The first v0.2.0 build is unsigned and unnotarized, with `extraMetadata.magiAutoUpdate: false`. Settings routes users to Releases and does not attempt a Squirrel installation. To enable automatic Mac installation in a future release, configure Developer ID signing and notarization, then set `magiAutoUpdate: true` only for signed distributions. Preserve the same app identifier and signing identity across updates. Test an actual signed old-to-new installation before claiming that update path is verified.
+
+Validation:
+
+```sh
+python3 -m unittest discover -s resources/magi/tests -v
+node --test resources/magi/tests/updates.test.cjs
+node resources/magi/tests/shortcuts-smoke.cjs
+node resources/magi/tests/layout-smoke.cjs
+```
+
+Electron smoke tests launch hidden windows against disposable local roots and never touch real VM sessions. Set `MAGI_EXECUTABLE` to a packaged Magi executable to validate the shipped runtime.

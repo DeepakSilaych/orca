@@ -7,14 +7,24 @@ export function SessionTerminal({
   workspace,
   terminal,
   fontSize,
-  theme
+  theme,
+  active = true
 }: {
   host: string
   workspace: string
   terminal: string
   fontSize: number
   theme: string
+  active?: boolean
 }) {
+  const focused = useRef(active)
+  focused.current = active
+  const instance = useRef<Terminal | null>(null)
+  useEffect(() => {
+    if (active && !document.querySelector('[data-magi-renaming]')) {
+      instance.current?.focus()
+    }
+  }, [active])
   const container = useRef<HTMLDivElement>(null)
   const [error, setError] = useState('')
   const [attempt, setAttempt] = useState(0)
@@ -35,6 +45,7 @@ export function SessionTerminal({
         foreground: style.getPropertyValue('--foreground').trim()
       }
     })
+    instance.current = term
     const fit = new FitAddon()
     term.loadAddon(fit)
     term.open(container.current)
@@ -69,7 +80,9 @@ export function SessionTerminal({
         if (!cancelled) {
           fit.fit()
           window.magi.resize(key, term.cols, term.rows)
-          term.focus()
+          if (focused.current && !document.querySelector('[data-magi-renaming]')) {
+            term.focus()
+          }
         }
       })
       .catch((error) => {
@@ -84,6 +97,7 @@ export function SessionTerminal({
       resize.disconnect()
       cancelAnimationFrame(frame)
       window.magi.detach(key)
+      instance.current = null
       term.dispose()
     }
   }, [host, workspace, terminal, fontSize, theme, attempt])

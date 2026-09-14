@@ -1,0 +1,40 @@
+appId: me.deepaksilaych.magi
+productName: Magi
+artifactName: Magi-${version}-${arch}.${ext}
+extraMetadata:
+  magiAutoUpdate: false
+  name: magi
+  version: 0.2.0
+  main: out/magi/main/index.js
+npmRebuild: false
+directories:
+  app: out/magi-package
+  output: dist-magi
+files:
+  - out/magi/**
+  - package.json
+  - LICENSE
+extraResources:
+  - from: resources/magi/backend
+    to: magi/backend
+    filter:
+      - magi.py
+      - sess
+      - SESS-LICENSE
+asarUnpack:
+  - '**/node-pty/**'
+mac:
+  icon: resources/magi/brand/icon.icns
+  category: public.app-category.developer-tools
+  target:
+    - dmg
+    - zip
+win:
+  target: nsis
+linux:
+  category: Development
+  target: AppImage
+publish:
+  provider: github
+  owner: DeepakSilaych
+  repo: orca
