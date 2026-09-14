@@ -1,3 +1,4 @@
+import { copyKey, installTerminalCopy } from './terminal-copy'
 import { installTerminalLinks } from './terminal-links'
 import type { OpenFile } from './editor'
 import { shiftEnterInput } from '../components/terminal-pane/terminal-shift-enter-input'
@@ -33,6 +34,7 @@ export function SessionTerminal({
     }
   }, [active])
   const container = useRef<HTMLDivElement>(null)
+  const [copyError, setCopyError] = useState('')
   const [linkError, setLinkError] = useState('')
   const [error, setError] = useState('')
   const [attempt, setAttempt] = useState(0)
@@ -53,7 +55,19 @@ export function SessionTerminal({
         foreground: style.getPropertyValue('--foreground').trim()
       }
     })
+    const copy = () => {
+      if (term.hasSelection()) {
+        void window.magi.copyText(term.getSelection()).catch((e) => setCopyError(String(e)))
+      }
+    }
     term.attachCustomKeyEventHandler((event) => {
+      if (copyKey(event)) {
+        event.preventDefault()
+        if (event.type === 'keydown') {
+          copy()
+        }
+        return false
+      }
       if (
         event.key !== 'Enter' ||
         !event.shiftKey ||
@@ -75,6 +89,7 @@ export function SessionTerminal({
     const fit = new FitAddon()
     term.loadAddon(fit)
     term.open(container.current)
+    const removeCopy = installTerminalCopy(term, container.current, copy)
     const removeLinks = installTerminalLinks(
       term,
       host,
@@ -128,6 +143,7 @@ export function SessionTerminal({
       cancelled = true
       off()
       removeLinks()
+      removeCopy()
       input.dispose()
       resize.disconnect()
       cancelAnimationFrame(frame)
@@ -139,13 +155,21 @@ export function SessionTerminal({
   return (
     <div className="relative flex h-full min-h-0 flex-col">
       <div ref={container} className="magi-terminal min-h-0 flex-1 p-3" />
-      {linkError && (
+      {(linkError || copyError) && (
         <div
           role="alert"
           className="absolute inset-x-3 bottom-3 flex items-center gap-3 rounded-md border bg-popover p-3 text-sm"
         >
-          <span className="flex-1">Could not open link: {linkError}</span>
-          <Button size="sm" onClick={() => setLinkError('')}>
+          <span className="flex-1">
+            {copyError ? `Could not copy: ${copyError}` : `Could not open link: ${linkError}`}
+          </span>
+          <Button
+            size="sm"
+            onClick={() => {
+              setLinkError('')
+              setCopyError('')
+            }}
+          >
             Dismiss
           </Button>
         </div>

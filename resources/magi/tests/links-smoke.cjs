@@ -37,7 +37,10 @@ const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'magi-links-qa-'))
     const key = JSON.stringify(['local', 'genral', t.id])
     await p.evaluate(
       ({ key }) =>
-        window.magi.write(key, "printf '\\nhttps://example.com/magi\\nnotes.md:2:1\\n'\r"),
+        window.magi.write(
+          key,
+          "printf '\\nhttps://example.com/magi\\nhttp://localhost:3000/test\\nnotes.md:2:1\\n'\r"
+        ),
       { key }
     )
     const rowFor = (text) => p.locator('.xterm-rows > div').filter({ hasText: text }).last()
@@ -73,6 +76,26 @@ const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'magi-links-qa-'))
     await p.mouse.click(pos.x, pos.y)
     await p.keyboard.up(mod)
     await expect.poll(() => app.evaluate(() => global.urls)).toEqual(['https://example.com/magi'])
+    pos = await point('http://localhost:3000/test')
+    await p.keyboard.down(mod)
+    await p.mouse.move(pos.x, pos.y)
+    await expect.poll(() => p.locator('.xterm-cursor-pointer').count()).toBe(1)
+    await p.mouse.click(pos.x, pos.y)
+    await p.keyboard.up(mod)
+    await expect
+      .poll(() => app.evaluate(() => global.urls))
+      .toEqual(['https://example.com/magi', 'http://localhost:3000/test'])
+    for (const url of ['file:///tmp/example', 'javascript:alert(1)']) {
+      const error = await p.evaluate(async (url) => {
+        try {
+          await window.magi.openExternal(url)
+          return ''
+        } catch (error) {
+          return String(error)
+        }
+      }, url)
+      expect(error).toContain('Only HTTP and HTTPS links are supported')
+    }
     pos = await point('notes.md:2:1')
     await p.keyboard.down(mod)
     await p.mouse.move(pos.x, pos.y)
@@ -93,7 +116,7 @@ const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'magi-links-qa-'))
     await expect(p.getByRole('button', { name: 'Close notes.md', exact: true })).toHaveCount(0)
     await expect(p.getByRole('button', { name: 'Close other.txt', exact: true })).toBeVisible()
     console.log(
-      'PASS: Cmd-click URL browser routing, file link validation and file tab, Genral file browser, independent file tab switching and closing.'
+      'PASS: Cmd-click HTTP/HTTPS browser routing and blocked unsafe protocols, file link validation and file tab, Genral file browser, independent file tab switching and closing.'
     )
   } finally {
     for (const w of (await request('snapshot')).workspaces) {

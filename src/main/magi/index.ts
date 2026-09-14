@@ -1,7 +1,7 @@
 import { operations } from './operations'
 import { configureHomebrewPath } from './homebrew-path'
 import { createUpdates } from './updates'
-import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, Menu, shell, clipboard } from 'electron'
 import { join, resolve } from 'node:path'
 import { mkdirSync } from 'node:fs'
 import { spawn, type IPty } from 'node-pty'
@@ -47,6 +47,13 @@ function authorize(event: Electron.IpcMainEvent | Electron.IpcMainInvokeEvent): 
   }
 }
 if (ownsLock) {
+  ipcMain.handle('magi:copy', (event, text: string) => {
+    authorize(event)
+    if (typeof text !== 'string' || text.length > 8 * 1024 * 1024) {
+      throw new Error('Clipboard text is too large')
+    }
+    clipboard.writeText(text)
+  })
   ipcMain.handle(
     'magi:request',
     (event, host: string, op: string, args?: Record<string, unknown>) => {
@@ -144,8 +151,8 @@ if (ownsLock) {
   ipcMain.handle('magi:external', (event, url: string) => {
     authorize(event)
     const parsed = new URL(url)
-    if (parsed.protocol !== 'https:') {
-      throw new Error('Only HTTPS links are supported')
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+      throw new Error('Only HTTP and HTTPS links are supported')
     }
     return shell.openExternal(url)
   })

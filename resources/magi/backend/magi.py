@@ -19,7 +19,7 @@ import time
 import urllib.request
 import uuid
 
-VERSION = "0.2.3"
+VERSION = "0.2.4"
 DEFAULT_PREFERENCES = {
     "theme": "graphite", "accent": "mint", "font_family": "system",
     "font_size": 13, "line_height": 1.35, "terminal_padding": 18,
@@ -540,6 +540,8 @@ class Backend:
                 else: args += [shell, "-l"]
                 run(args, env=env)
                 run(["tmux", "set-option", "-t", session, "history-limit", "10000"])
+            # Magi owns pane layout and local text selection; do not inherit remote mouse capture.
+            run(["tmux", "set-option", "-t", session, "mouse", "off"])
             # sess handles attach/persistence, using isolated state with no default remote.
             sess = self.root / "utils" / "magi" / "sess"
             return {"program": "bash", "args": [str(sess), "attach", session], "env": {"SESS_DIR": str(sess_dir), "MAGI_ROOT": str(self.root), "MAGI_WORKSPACE": workspace, "MAGI_NO_STATUS": "1", "SESS_ATTACH_ONLY": "1", "PATH": env["PATH"], "TERM": "xterm-256color"}, "cwd": t["cwd"]}

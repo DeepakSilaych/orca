@@ -6,6 +6,7 @@ import type {
   UpdateState
 } from '../../shared/magi/types'
 const api: MagiApi = {
+  copyText: (text) => ipcRenderer.invoke('magi:copy', text),
   getUpdate: () => ipcRenderer.invoke('magi:update:get'),
   runUpdate: () => ipcRenderer.invoke('magi:update:run'),
   onUpdate: (listener) => {

@@ -85,6 +85,7 @@ export type UpdateState = {
   percent?: number
 }
 export type MagiApi = {
+  copyText: (text: string) => Promise<void>
   getUpdate: () => Promise<UpdateState>
   runUpdate: () => Promise<UpdateState>
   onUpdate: (listener: (state: UpdateState) => void) => () => void

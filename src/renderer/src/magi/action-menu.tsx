@@ -66,5 +66,5 @@ export function ActionMenu({
     </ContextMenu>
   )
 }
-export const copyPath = (path: string) => navigator.clipboard.writeText(path)
+export const copyPath = (path: string) => window.magi.copyText(path)
 export const command = navigator.userAgent.includes('Mac') ? '⌘' : 'Ctrl+'

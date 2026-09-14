@@ -69,13 +69,14 @@ const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'magi-polish-qa-'))
     await expect(p.getByRole('dialog')).toContainText('Agent pane')
     await p.getByRole('button', { name: 'Cancel', exact: true }).click()
     await p.evaluate(() => {
-      window.qa = { copies: [] }
-      navigator.clipboard.writeText = async (text) => {
-        window.qa.copies.push(text)
-      }
+      window.qa = {}
+    })
+    await app.evaluate(({ clipboard }) => {
+      global.copies = []
+      clipboard.writeText = (text) => global.copies.push(text)
     })
     await menu(row('Polish Beta'), 'Copy workspace path')
-    expect(await p.evaluate(() => window.qa.copies)).toEqual([b.path])
+    expect(await app.evaluate(() => global.copies)).toEqual([b.path])
     const from = await row('Polish Beta').boundingBox(),
       to = await row('Polish Alpha').boundingBox()
     await p.mouse.move(from.x + from.width / 2, from.y + from.height / 2)
