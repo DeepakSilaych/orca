@@ -34,7 +34,13 @@ const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'magi-layout-qa-'))
       { key, shift }
     )
   const panes = (count) =>
-    p.waitForFunction((count) => document.querySelectorAll('[data-pane]').length === count, count)
+    p.waitForFunction(
+      (count) =>
+        [...document.querySelectorAll('[data-pane]')].filter(
+          (n) => n.closest('[aria-hidden]')?.getAttribute('aria-hidden') !== 'true'
+        ).length === count,
+      count
+    )
   const owner = (id) =>
     execFileSync('tmux', ['list-panes', '-a', '-F', '#{session_name}|#{pane_pid}'])
       .toString()
@@ -71,7 +77,7 @@ const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'magi-layout-qa-'))
     if (original !== owner(a.terminals[0].id)) {
       throw new Error('Split restarted original session')
     }
-    const boxes = await p.locator('[data-pane]').evaluateAll((nodes) =>
+    const boxes = await p.locator('[data-pane]:visible').evaluateAll((nodes) =>
       nodes.map((n) => {
         const b = n.getBoundingClientRect()
         return { width: b.width, height: b.height, x: b.x, y: b.y }
@@ -90,7 +96,7 @@ const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'magi-layout-qa-'))
       await p.screenshot({ path: path.join(process.env.MAGI_QA_OUTPUT, 'nested-splits.png') })
     }
     const divider = p.getByRole('separator', { name: 'Resize terminal split' }).first(),
-      rect = await p.locator('[data-terminal-layout]').boundingBox(),
+      rect = await p.locator('[data-terminal-layout]:visible').boundingBox(),
       handle = await divider.boundingBox()
     await p.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 4)
     await p.mouse.down()

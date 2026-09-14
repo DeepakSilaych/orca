@@ -1,3 +1,4 @@
+import { operations } from './operations'
 import { configureHomebrewPath } from './homebrew-path'
 import { createUpdates } from './updates'
 import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from 'electron'
@@ -45,33 +46,6 @@ function authorize(event: Electron.IpcMainEvent | Electron.IpcMainInvokeEvent): 
     throw new Error('Untrusted IPC sender')
   }
 }
-const operations = new Set([
-  'resolve_links',
-  'snapshot',
-  'host_add',
-  'repo_register',
-  'branches',
-  'workspace_create',
-  'repo_attach',
-  'workspace_archive',
-  'workspace_rename',
-  'terminal_rename',
-  'terminal_split',
-  'terminal_resize',
-  'terminal_reorder',
-  'workspace_reorder',
-  'terminal_new',
-  'terminal_remove',
-  'status',
-  'files',
-  'file',
-  'diff',
-  'diff_content',
-  'git_action',
-  'ticket_attach',
-  'integrations',
-  'install_cli'
-])
 if (ownsLock) {
   ipcMain.handle(
     'magi:request',

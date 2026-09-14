@@ -19,7 +19,7 @@ import time
 import urllib.request
 import uuid
 
-VERSION = "0.2.2"
+VERSION = "0.2.3"
 DEFAULT_PREFERENCES = {
     "theme": "graphite", "accent": "mint", "font_family": "system",
     "font_size": 13, "line_height": 1.35, "terminal_padding": 18,
@@ -27,6 +27,59 @@ DEFAULT_PREFERENCES = {
     "left_width": 224, "right_width": 320, "show_workspaces": True,
     "show_repos": True, "show_timing": False,
 }
+
+
+AGENT_COMMANDS = {"claude": "claude", "codex": "codex", "gemini": "gemini", "opencode": "opencode", "aider": "aider", "amp": "amp", "droid": "droid", "copilot": "copilot", "cursor-agent": "cursor", "pi": "pi"}
+
+def agent_command(command):
+    """Inspect executable/script identity, never arbitrary prompt arguments or terminal text."""
+    try: argv = shlex.split(command)
+    except ValueError: return None
+    if not argv: return None
+    binary = Path(argv[0]).name
+    if binary in AGENT_COMMANDS: return AGENT_COMMANDS[binary]
+    if "/claude/versions/" in argv[0]: return "claude"
+    if binary in ("node", "nodejs", "bun", "deno") or re.fullmatch(r"python[0-9.]*", binary):
+        if len(argv) > 2 and argv[1] == "-m" and argv[2] in ("aider", "aider.main"): return "aider"
+        if len(argv) < 2 or argv[1].startswith("-"): return None
+        script = argv[1]
+        stem = Path(script).name.removesuffix(".js").removesuffix(".mjs").removesuffix(".py")
+        if stem in AGENT_COMMANDS: return AGENT_COMMANDS[stem]
+        packages = {"@anthropic-ai/claude-code/":"claude", "@openai/codex/":"codex", "@google/gemini-cli/":"gemini", "opencode-ai/":"opencode", "@sourcegraph/amp/":"amp", "@github/copilot/":"copilot", "@mariozechner/pi-coding-agent/":"pi"}
+        return next((agent for package, agent in packages.items() if "/" + package in script), None)
+    return None
+
+def foreground_agents(panes, process_table, terminals):
+    processes, children = {}, {}
+    for line in process_table.splitlines():
+        fields = line.strip().split(None, 4)
+        if len(fields) != 5: continue
+        try: pid, ppid, pgid, foreground = map(int, fields[:4])
+        except ValueError: continue
+        processes[pid] = (pgid, foreground, fields[4])
+        children.setdefault(ppid, []).append(pid)
+    result = {t["id"]: None for t in terminals}
+    for line in panes.splitlines():
+        fields = line.split("\t")
+        if len(fields) != 2 or not fields[0].startswith("magi-"): continue
+        tid = fields[0][5:]
+        if tid not in result: continue
+        try: root = int(fields[1])
+        except ValueError: continue
+        foreground = processes.get(root, (0, 0, ""))[1]
+        queue, seen = [root], set()
+        while queue and len(seen) < 10000:
+            pid = queue.pop(0)
+            if pid in seen: continue
+            seen.add(pid)
+            process = processes.get(pid)
+            if process and foreground > 0 and process[0] == foreground:
+                agent = agent_command(process[2])
+                if agent:
+                    result[tid] = agent
+                    break
+            queue.extend(children.get(pid, []))
+    return result
 
 
 def validate_preferences(values):
@@ -526,12 +579,39 @@ class Backend:
         except Exception as e:
             return {**row, "files": [], "error": str(e)}
 
+    def terminal_agents(self, terminals):
+        if not any(t.get("started") for t in terminals): return {t["id"]: None for t in terminals}
+        try:
+            panes = text(run(["tmux", "list-panes", "-a", "-F", "#{session_name}\t#{pane_pid}"], timeout=3))
+            processes = text(run(["ps", "-axo", "pid=,ppid=,pgid=,tpgid=,args="], timeout=3))
+            return foreground_agents(panes, processes, terminals)
+        except (OSError, ValueError, subprocess.TimeoutExpired): return None
+
     def status(self, workspace, **_):
         ws = self.ws(workspace)
         rows = ws["repos"] + [r for r in self.config()["repos"] if r.get("utility")]
         start = time.monotonic()
         results = list(POOL.map(self.status_one, rows))
-        return {"repos": results, "elapsedMs": round((time.monotonic() - start) * 1000, 1), "at": time.time()}
+        return {"repos": results, "agents": self.terminal_agents(ws["terminals"]), "elapsedMs": round((time.monotonic() - start) * 1000, 1), "at": time.time()}
+
+    def terminal_cwd(self, workspace, terminal, **_):
+        ws = self.ws(workspace)
+        session = next((t for t in ws["terminals"] if t["id"] == terminal), None)
+        if not session: raise ValueError("Unknown terminal")
+        cwd = session["cwd"]
+        if session.get("started"):
+            cwd = text(run(["tmux", "display-message", "-p", "-t", "=magi-" + ident(terminal) + ":", "#{pane_current_path}"]))
+        return {"path": cwd}
+
+    def file_info(self, workspace, repo, path, **_):
+        ws = self.ws(workspace)
+        if repo == "@files":
+            p = Path(path).expanduser()
+            if not p.is_absolute(): raise ValueError("File link must be absolute")
+        else:
+            root = ws["path"] if repo == "@workspace" else self.attachment(workspace, repo)["path"]
+            p = within(root, path)
+        return {"absolutePath": str(p.resolve())}
 
     def resolve_links(self, workspace, terminal, paths, **_):
         if not isinstance(paths, list) or len(paths) > 64: raise ValueError("Too many link candidates")
@@ -553,8 +633,11 @@ class Backend:
         return result
 
     def files(self, workspace, repo, directory="", **_):
-        r = {"path": self.ws(workspace)["path"]} if repo == "@workspace" else self.attachment(workspace, repo)
-        path = within(r["path"], directory)
+        r = {"path": self.ws(workspace)["path"]} if repo in ("@workspace", "@files") else self.attachment(workspace, repo)
+        if repo == "@files":
+            path = Path(directory)
+            if not path.is_absolute(): raise ValueError("Directory must be absolute")
+        else: path = within(r["path"], directory)
         entries = []
         with os.scandir(path) as it:
             for item in it:
@@ -671,7 +754,7 @@ class Backend:
         return result
 
     def dispatch(self, op, args=None):
-        allowed = {"resolve_links", "terminal_split", "terminal_resize", "terminal_reorder", "workspace_reorder", "snapshot", "preferences_get", "preferences_set", "host_add", "repo_register", "branches", "workspace_create", "repo_attach", "workspace_archive", "workspace_rename", "terminal_rename", "terminal_new", "terminal_prepare", "terminal_remove", "status", "files", "file", "diff", "diff_content", "git_action", "ticket_attach", "integrations", "install_cli"}
+        allowed = {"resolve_links", "file_info", "terminal_cwd", "terminal_split", "terminal_resize", "terminal_reorder", "workspace_reorder", "snapshot", "preferences_get", "preferences_set", "host_add", "repo_register", "branches", "workspace_create", "repo_attach", "workspace_archive", "workspace_rename", "terminal_rename", "terminal_new", "terminal_prepare", "terminal_remove", "status", "files", "file", "diff", "diff_content", "git_action", "ticket_attach", "integrations", "install_cli"}
         if op not in allowed: raise ValueError("Unknown operation: " + op)
         return getattr(self, op)(**(args or {}))
 

@@ -1,3 +1,4 @@
+import { useInteractions } from './workspace-actions'
 import { ReorderList } from './reorder-list'
 import { RenameItem } from './rename-item'
 import {
@@ -45,6 +46,7 @@ export function WorkspaceSidebar({
   refresh: () => void
   openSettings: () => void
 }) {
+  const menus = useInteractions()
   return (
     <aside className="flex h-full w-full shrink-0 flex-col border-r bg-sidebar text-sidebar-foreground">
       <div className="flex items-center gap-2 p-3">
@@ -109,6 +111,7 @@ export function WorkspaceSidebar({
         >
           {(w) => (
             <RenameItem
+              actions={menus.workspace(w)}
               key={w.id}
               name={w.name}
               kind="workspace"

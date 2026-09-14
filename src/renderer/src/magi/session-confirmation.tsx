@@ -7,11 +7,13 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 export function SessionConfirmation({
+  name,
   kind,
   busy,
   close,
   confirm
 }: {
+  name?: string
   kind: 'archive' | 'terminal'
   busy: boolean
   close: () => void
@@ -29,7 +31,8 @@ export function SessionConfirmation({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>
-            {kind === 'archive' ? 'Archive workspace?' : 'End terminal session?'}
+            {kind === 'archive' ? 'Archive workspace?' : 'End terminal session?'}{' '}
+            {name && <span className="font-normal">{name}</span>}
           </DialogTitle>
           <DialogDescription>
             {kind === 'archive'

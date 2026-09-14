@@ -1,13 +1,15 @@
-import type { useFileTabs } from './file-tabs'
-import { FileTabs } from './file-tabs'
+import { TerminalAgentIcon } from './agent-icon'
+import { useEffect, useRef } from 'react'
+import { FileTabs, type useFileTabs, fileKey } from './file-tabs'
 import { ReorderList } from './reorder-list'
 import { terminalTabs } from '../../../shared/magi/types'
 import { RenameItem } from './rename-item'
-import { Archive, FolderGit2, Plus, TerminalSquare, X } from 'lucide-react'
+import { Plus, X, Ellipsis, ChevronDown } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import type { Workspace, Session } from '../../../shared/magi/types'
 import type { OpenFile } from './editor'
-import type { FormKind } from './forms'
+import { ActionMenu } from './action-menu'
+import { useInteractions } from './workspace-actions'
 export function TerminalTabs({
   fileTabs,
   host,
@@ -19,8 +21,7 @@ export function TerminalTabs({
   setTerminalId,
   setFile,
   terminalNew,
-  setForm,
-  setConfirm
+  reveal
 }: {
   fileTabs: ReturnType<typeof useFileTabs>
   host: string
@@ -32,13 +33,27 @@ export function TerminalTabs({
   setTerminalId: (id: string) => void
   setFile: (file?: OpenFile) => void
   terminalNew: () => Promise<void>
-  setForm: (form: FormKind) => void
-  setConfirm: (kind: 'archive' | 'terminal') => void
+  reveal: (file: OpenFile) => void
 }) {
-  const tabs = terminalTabs(workspace?.terminals || [])
+  const tabs = terminalTabs(workspace?.terminals || []),
+    menus = useInteractions(),
+    strip = useRef<HTMLDivElement>(null)
+  const activeFileKey = file && fileKey(file)
+  useEffect(() => {
+    strip.current
+      ?.querySelector('[aria-selected="true"]')
+      ?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+  }, [terminal?.id, activeFileKey, tabs.length, fileTabs.files.length])
+  const choose = (t: Session) => {
+    setTerminalId(t.id)
+    setFile(undefined)
+  }
   return (
     <div className="flex h-11 shrink-0 items-center overflow-hidden border-b">
-      <div className="flex h-full min-w-0 flex-1 items-center overflow-x-auto scrollbar-sleek">
+      <div
+        ref={strip}
+        className="flex h-full min-w-0 flex-1 items-center overflow-x-auto scrollbar-sleek"
+      >
         <ReorderList
           items={tabs}
           horizontal
@@ -61,10 +76,20 @@ export function TerminalTabs({
               kind="terminal"
               selected={(terminal?.tab_id || terminal?.id) === (t.tab_id || t.id) && !file}
               enabled={!busy}
-              select={() => {
-                setTerminalId(t.id)
-                setFile(undefined)
-              }}
+              actions={workspace ? menus.terminal(workspace, t) : []}
+              end={
+                <button
+                  data-no-drag
+                  title="End terminal session"
+                  aria-label={`End session ${t.name}`}
+                  className="p-2 text-muted-foreground hover:text-destructive"
+                  disabled={busy}
+                  onClick={() => workspace && menus.end(workspace, t)}
+                >
+                  <X className="size-3" />
+                </button>
+              }
+              select={() => choose(t)}
               rename={async (name) => {
                 await window.magi.request(host, 'terminal_rename', {
                   workspace: workspace?.id,
@@ -73,13 +98,31 @@ export function TerminalTabs({
                 })
                 refresh()
               }}
-              className={`flex h-full shrink-0 items-center gap-2 border-r px-4 text-xs ${(terminal?.tab_id || terminal?.id) === (t.tab_id || t.id) && !file ? 'border-b-2 border-b-foreground bg-accent' : 'text-muted-foreground hover:bg-accent'}`}
-              leading={<TerminalSquare className="size-3.5" />}
+              className={`flex h-full shrink-0 items-center gap-2 px-3 text-xs ${(terminal?.tab_id || terminal?.id) === (t.tab_id || t.id) && !file ? 'border-b-2 border-b-foreground bg-accent' : 'text-muted-foreground hover:bg-accent'}`}
+              leading={
+                <TerminalAgentIcon
+                  siblings={workspace?.terminals
+                    .filter((s) => (s.tab_id || s.id) === (t.tab_id || t.id))
+                    .map((s) => s.id)}
+                  terminal={
+                    (terminal?.tab_id || terminal?.id) === (t.tab_id || t.id) ? terminal!.id : t.id
+                  }
+                />
+              }
             />
           )}
         </ReorderList>
-        <FileTabs files={fileTabs.files} active={file} select={setFile} close={fileTabs.close} />
-        {workspace && (
+        <FileTabs
+          files={fileTabs.files}
+          active={file}
+          select={setFile}
+          close={fileTabs.close}
+          closeOthers={fileTabs.closeOthers}
+          reveal={reveal}
+        />
+      </div>
+      {workspace && (
+        <div className="flex h-full shrink-0 items-center border-l px-1">
           <Button
             aria-label="New terminal"
             title="New terminal"
@@ -90,36 +133,30 @@ export function TerminalTabs({
           >
             <Plus />
           </Button>
-        )}
-      </div>
-      {workspace && (
-        <div className="flex h-full shrink-0 items-center border-l bg-background px-1">
-          <Button variant="ghost" size="sm" onClick={() => setForm('attach')}>
-            <FolderGit2 />
-            Attach repos
-          </Button>
-          {!workspace.permanent && (
-            <Button
-              aria-label="Archive workspace"
-              title="Archive workspace"
-              variant="ghost"
-              size="icon-xs"
-              onClick={() => setConfirm('archive')}
-            >
-              <Archive />
+          <ActionMenu
+            dropdown
+            actions={[
+              ...tabs.map((t) => ({ label: `Terminal: ${t.name}`, run: () => choose(t) })),
+              ...fileTabs.files.map((f) => ({
+                label: `File: ${f.path}${f.scope ? ` (${f.scope})` : ''}`,
+                run: () => setFile({ ...f, line: undefined, column: undefined })
+              }))
+            ]}
+          >
+            <Button aria-label="All tabs" title="All tabs" size="icon-sm" variant="ghost">
+              <ChevronDown />
             </Button>
-          )}
-          {terminal && (
+          </ActionMenu>
+          <ActionMenu dropdown actions={menus.workspace(workspace)}>
             <Button
-              aria-label="End terminal session"
-              title="End terminal session"
+              aria-label="Workspace actions"
+              title="Workspace actions"
               variant="ghost"
               size="icon-sm"
-              onClick={() => setConfirm('terminal')}
             >
-              <X />
+              <Ellipsis />
             </Button>
-          )}
+          </ActionMenu>
         </div>
       )}
     </div>

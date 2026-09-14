@@ -60,7 +60,7 @@ const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'magi-shortcut-qa-'))
     await selected('Beta')
     await key('ArrowUp')
     await selected('Alpha')
-    await p.locator('.xterm-helper-textarea').focus()
+    await p.locator('.xterm-helper-textarea:visible').focus()
     await key('ArrowRight')
     await p.waitForFunction(() =>
       [...document.querySelectorAll('button')].some(
@@ -105,7 +105,7 @@ const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'magi-shortcut-qa-'))
     await p.getByRole('dialog').getByRole('button', { name: 'New workspace', exact: true }).click()
     await selected('Shortcut workspace')
     await p.getByRole('dialog').waitFor({ state: 'detached' })
-    await p.locator('.xterm-helper-textarea').focus()
+    await p.locator('.xterm-helper-textarea:visible').focus()
     await key('t')
     await p.getByRole('button', { name: 'Terminal 2', exact: true }).waitFor()
     await p.waitForFunction(() =>

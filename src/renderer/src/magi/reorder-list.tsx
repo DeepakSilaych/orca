@@ -15,8 +15,6 @@ import {
   verticalListSortingStrategy,
   sortableKeyboardCoordinates
 } from '@dnd-kit/sortable'
-import { GripVertical } from 'lucide-react'
-import { Button } from '@/components/ui/button'
 function Item({
   id,
   label,
@@ -30,29 +28,32 @@ function Item({
   children: ReactNode
   disabled: boolean
 }) {
-  const { setNodeRef, attributes, listeners, transform, transition, isDragging } = useSortable({
-    id,
-    disabled
-  })
+  const { setNodeRef, attributes, listeners, transform, transition, isDragging, isOver } =
+    useSortable({
+      id,
+      disabled
+    })
   return (
     <div
       ref={setNodeRef}
-      className={`group flex min-w-0 items-center ${horizontal ? 'h-full shrink-0' : 'w-full'} ${isDragging ? 'relative z-10 bg-accent' : ''}`}
+      {...attributes}
+      {...listeners}
+      aria-label={`Reorder ${label}`}
+      onPointerDown={(event) => {
+        if (
+          event.button !== 0 ||
+          (event.target instanceof Element && event.target.closest('input, [data-no-drag]'))
+        ) {
+          return
+        }
+        listeners?.onPointerDown?.(event)
+      }}
+      className={`group flex min-w-0 items-center ${horizontal ? 'h-full shrink-0' : 'w-full'} cursor-grab active:cursor-grabbing ${isDragging ? 'relative z-10 bg-accent opacity-70' : ''} ${isOver && !isDragging ? (horizontal ? 'border-l-2 border-l-ring' : 'border-t-2 border-t-ring') : ''}`}
       style={{
         transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
         transition
       }}
     >
-      <Button
-        variant="ghost"
-        size="icon-xs"
-        className="shrink-0 touch-none cursor-grab opacity-50 hover:opacity-100"
-        aria-label={`Reorder ${label}`}
-        {...attributes}
-        {...listeners}
-      >
-        <GripVertical className="size-3" />
-      </Button>
       <div className={horizontal ? 'h-full min-w-0' : 'min-w-0 flex-1'}>{children}</div>
     </div>
   )

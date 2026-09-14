@@ -21,7 +21,7 @@ export async function closeActiveTab({
   setFile: Dispatch<SetStateAction<OpenFile | undefined>>
   setBusy: Dispatch<SetStateAction<boolean>>
   setSnapshot: Dispatch<SetStateAction<Snapshot | undefined>>
-  setTerminalId: Dispatch<SetStateAction<string>>
+  setTerminalId: (id: string) => void
   selectWorkspace: (id: string) => void
 }) {
   if (file) {

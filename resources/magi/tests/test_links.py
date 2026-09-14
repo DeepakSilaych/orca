@@ -25,3 +25,22 @@ class FileLinkTests(unittest.TestCase):
             result = self.backend.resolve_links('genral', ws['terminals'][0]['id'], ['with spaces.txt'])
         self.assertEqual(self.backend.file('genral', **result[0])['text'], 'Outside file')
         with self.assertRaises(ValueError): self.backend.file('genral', '@workspace', '../outside/with spaces.txt')
+
+    def test_canonical_identity_and_external_tree(self):
+        ws = self.backend.ws('genral')
+        root = Path(ws['path'])
+        (root / 'notes.md').write_text('notes')
+        (root / 'alias.md').symlink_to('notes.md')
+        first = self.backend.file_info('genral', '@workspace', 'notes.md')
+        alias = self.backend.file_info('genral', '@workspace', 'alias.md')
+        linked = self.backend.file_info('genral', '@files', str(root / 'notes.md'))
+        self.assertEqual(first, alias)
+        self.assertEqual(first, linked)
+        self.assertEqual(self.backend.terminal_cwd('genral', ws['terminals'][0]['id'])['path'], str(root))
+        external = root.parent / 'external'
+        external.mkdir()
+        (external / 'remote.md').write_text('remote')
+        listing = self.backend.files('genral', '@files', str(external))
+        self.assertEqual(listing['entries'][0]['path'], str(external / 'remote.md'))
+        with self.assertRaises(ValueError): self.backend.files('genral', '@files', '../relative')
+        with self.assertRaises(ValueError): self.backend.file_info('genral', '@workspace', '../escape')

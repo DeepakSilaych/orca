@@ -1,7 +1,10 @@
+import { ActionMenu, type Action } from './action-menu'
 import { useRef, useState, type ReactNode } from 'react'
 import { Input } from '@/components/ui/input'
 
 export function RenameItem({
+  actions,
+  end,
   name,
   kind,
   selected,
@@ -12,6 +15,8 @@ export function RenameItem({
   rename,
   enabled = true
 }: {
+  actions?: Action[]
+  end?: ReactNode
   name: string
   kind: 'workspace' | 'terminal'
   selected: boolean
@@ -112,27 +117,48 @@ export function RenameItem({
     )
   }
   return (
-    <button
-      className={className}
-      aria-selected={selected}
-      onClick={(e) => {
-        if (selected && e.detail > 0) {
-          begin()
-        } else {
-          select()
-        }
-      }}
-      onDoubleClick={begin}
-      onKeyDown={(e) => {
-        if (e.key === 'F2') {
-          e.preventDefault()
-          begin()
-        }
-      }}
+    <ActionMenu
+      actions={[
+        { label: `Rename ${kind}`, run: begin, disabled: !enabled, shortcut: 'F2' },
+        ...(actions || [])
+      ]}
     >
-      {leading}
-      <span className="min-w-0 max-w-56 flex-1 truncate">{name}</span>
-      {trailing}
-    </button>
+      <div className="flex h-full min-w-0 flex-1 items-center">
+        <button
+          className={className}
+          aria-selected={selected}
+          onClick={(e) => {
+            if (
+              selected &&
+              e.detail > 0 &&
+              e.target instanceof Element &&
+              e.target.closest('[data-rename-label]')
+            ) {
+              begin()
+            } else {
+              select()
+            }
+          }}
+          onDoubleClick={(e) => {
+            if (e.target instanceof Element && e.target.closest('[data-rename-label]')) {
+              begin()
+            }
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'F2') {
+              e.preventDefault()
+              begin()
+            }
+          }}
+        >
+          {leading}
+          <span data-rename-label className="min-w-0 max-w-56 flex-1 truncate">
+            {name}
+          </span>
+          {trailing}
+        </button>
+        {end}
+      </div>
+    </ActionMenu>
   )
 }

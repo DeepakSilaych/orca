@@ -1,3 +1,5 @@
+import { restoreEditor } from './editor-state'
+import { useRef } from 'react'
 import { useEffect, useState } from 'react'
 import Editor, { DiffEditor, loader } from '@monaco-editor/react'
 import * as monaco from 'monaco-editor'
@@ -8,8 +10,6 @@ import cssWorker from 'monaco-editor/esm/vs/language/css/css.worker?worker'
 import htmlWorker from 'monaco-editor/esm/vs/language/html/html.worker?worker'
 import { installMonacoDiffEditorDisposalGuard } from '@/lib/monaco-diff-editor-disposal'
 import { diffEditorScrollbarOptions } from '@/components/editor/diff-editor-scrollbar-options'
-import { Button } from '@/components/ui/button'
-import { X } from 'lucide-react'
 globalThis.MonacoEnvironment = {
   getWorker: (_id, label) => {
     if (label === 'typescript' || label === 'javascript') {
@@ -38,6 +38,7 @@ monaco.typescript.javascriptDefaults.setDiagnosticsOptions({
 })
 loader.config({ monaco })
 export type OpenFile = {
+  absolutePath?: string
   repo: string
   path: string
   scope?: 'working' | 'staged'
@@ -45,18 +46,26 @@ export type OpenFile = {
   column?: number
 }
 export function FileViewer({
+  revision = 0,
   host,
   workspace,
   file,
-  close,
   theme
 }: {
+  revision?: number
   host: string
   workspace: string
   file: OpenFile
-  close: () => void
   theme: string
 }) {
+  const disposeView = useRef<(() => void) | undefined>(undefined)
+  useEffect(
+    () => () => {
+      disposeView.current?.()
+      disposeView.current = undefined
+    },
+    []
+  )
   const [content, setContent] = useState<{
     text?: string
     original?: string
@@ -65,9 +74,16 @@ export function FileViewer({
     binary?: boolean
   }>()
   const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
+  const contentKey = JSON.stringify([host, workspace, file.repo, file.path, file.scope])
+  const previousKey = useRef('')
   useEffect(() => {
     let active = true
-    setContent(undefined)
+    if (previousKey.current !== contentKey) {
+      setContent(undefined)
+    }
+    previousKey.current = contentKey
+    setLoading(true)
     setError('')
     window.magi
       .request<typeof content>(host, file.scope ? 'diff_content' : 'file', {
@@ -81,6 +97,11 @@ export function FileViewer({
           setContent(value)
         }
       })
+      .finally(() => {
+        if (active) {
+          setLoading(false)
+        }
+      })
       .catch((e) => {
         if (active) {
           setError(String(e))
@@ -89,7 +110,7 @@ export function FileViewer({
     return () => {
       active = false
     }
-  }, [host, workspace, file])
+  }, [host, workspace, file, revision, contentKey])
   const language =
     {
       ts: 'typescript',
@@ -121,9 +142,9 @@ export function FileViewer({
           {file.path}
           {file.scope && ` · ${file.scope} diff`}
         </span>
-        <Button aria-label="Close file" variant="ghost" size="icon-xs" onClick={close}>
-          <X />
-        </Button>
+        <span className="ml-3 shrink-0 text-muted-foreground">
+          {loading ? 'Refreshing… · Read-only' : 'Read-only'}
+        </span>
       </div>
       {error ? (
         <p role="alert" className="p-4 text-sm text-destructive">
@@ -143,6 +164,7 @@ export function FileViewer({
           keepCurrentModifiedModel
           onMount={(editor) => {
             const model = editor.getModel()
+            disposeView.current = restoreEditor(editor.getModifiedEditor(), host, workspace, file)
             editor.onDidDispose(() => {
               model?.original.dispose()
               model?.modified.dispose()
@@ -157,10 +179,7 @@ export function FileViewer({
       ) : (
         <Editor
           onMount={(editor) => {
-            if (file.line) {
-              editor.revealLineInCenter(file.line)
-              editor.setPosition({ lineNumber: file.line, column: file.column || 1 })
-            }
+            disposeView.current = restoreEditor(editor, host, workspace, file)
           }}
           value={content.text}
           language={language}

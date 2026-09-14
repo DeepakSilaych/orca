@@ -1,5 +1,7 @@
-import { Server, GitBranch, Link2 } from 'lucide-react'
+import { useContext } from 'react'
+import { Server, GitBranch, Link2, Ellipsis, GitPullRequest } from 'lucide-react'
 import type { Snapshot, RepoStatus, Integrations, Workspace } from '../../../shared/magi/types'
+import { ActionMenu, copyPath, Feedback } from './action-menu'
 export function StatusBar({
   host,
   loading,
@@ -7,7 +9,8 @@ export function StatusBar({
   statuses,
   integrations,
   workspace,
-  attachTicket
+  attachTicket,
+  showGit
 }: {
   host: string
   loading: boolean
@@ -16,41 +19,84 @@ export function StatusBar({
   integrations?: Integrations
   workspace?: Workspace
   attachTicket: () => void
+  showGit: () => void
 }) {
+  const report = useContext(Feedback),
+    prs = integrations?.prs.flatMap((r) => r.prs.map((pr) => ({ ...pr, repo: r.repo }))) || []
+  const issue = integrations?.ticket.issue,
+    url = issue?.url
+  const errors = integrations?.prs.filter((r) => r.error) || []
   return (
-    <footer className="flex h-7 shrink-0 items-center gap-4 overflow-hidden border-t px-3 text-xs text-muted-foreground">
-      <span className="flex items-center gap-1">
+    <footer className="flex h-7 shrink-0 items-center gap-3 border-t px-3 text-xs text-muted-foreground">
+      <span className="flex shrink-0 items-center gap-1">
         <Server className="size-3" />
         {loading ? 'Connecting' : snapshot ? host : 'Unverifiable'}
       </span>
-      <span className="flex items-center gap-1">
+      <button
+        className="flex shrink-0 items-center gap-1 hover:text-foreground"
+        title="Open source control"
+        onClick={showGit}
+      >
         <GitBranch className="size-3" />
-        {statuses.length} repos · {statuses.reduce((sum, r) => sum + r.files.length, 0)} changes
-      </span>
-      {integrations?.prs.flatMap((r) =>
-        r.prs.map((pr) => (
+        {statuses.length} repos · {statuses.reduce((n, r) => n + r.files.length, 0)} changes
+      </button>
+      {(prs.length > 0 || errors.length > 0) && (
+        <ActionMenu
+          dropdown
+          actions={[
+            ...prs.map((pr) => ({
+              label: `${pr.repo} #${pr.number} · ${pr.state.toLowerCase()} — ${pr.title}`,
+              run: () => window.magi.openExternal(pr.url)
+            })),
+            ...errors.map((r) => ({
+              label: `${r.repo}: ${r.error}`,
+              disabled: true,
+              run: () => {}
+            }))
+          ]}
+        >
           <button
-            key={r.repo + pr.number}
-            title={pr.title}
-            className="hover:text-foreground"
-            onClick={() => void window.magi.openExternal(pr.url)}
+            className="flex shrink-0 items-center gap-1 hover:text-foreground"
+            aria-label="Pull requests"
           >
-            {r.repo} #{pr.number} · {pr.state.toLowerCase()}
+            <GitPullRequest className="size-3" />
+            {prs.length} PRs{errors.length ? ' · unavailable' : ''}
           </button>
-        ))
+        </ActionMenu>
       )}
       <span className="flex-1" />
       {workspace && (
-        <button
-          title={integrations?.ticket.error || 'Attach Linear ticket'}
-          className="flex items-center gap-1 hover:text-foreground"
-          onClick={attachTicket}
-        >
-          <Link2 className="size-3" />
-          {integrations?.ticket.issue
-            ? `${integrations.ticket.issue.identifier} · ${integrations.ticket.issue.state.name}`
-            : workspace.ticket || 'Attach ticket'}
-        </button>
+        <div className="flex min-w-0 items-center gap-1">
+          <button
+            title={issue?.title || integrations?.ticket.error || 'Attach Linear ticket'}
+            className="flex min-w-0 items-center gap-1 hover:text-foreground"
+            onClick={() =>
+              url ? void window.magi.openExternal(url).catch(report) : attachTicket()
+            }
+          >
+            <Link2 className="size-3 shrink-0" />
+            <span className="truncate">
+              {issue
+                ? `${issue.identifier} · ${issue.state.name}`
+                : workspace.ticket || 'Attach ticket'}
+            </span>
+          </button>
+          <ActionMenu
+            dropdown
+            actions={[
+              { label: 'Edit attached ticket', run: attachTicket },
+              {
+                label: 'Copy ticket link',
+                disabled: !url,
+                run: () => (url ? copyPath(url) : undefined)
+              }
+            ]}
+          >
+            <button aria-label="Ticket actions" className="p-1">
+              <Ellipsis className="size-3" />
+            </button>
+          </ActionMenu>
+        </div>
       )}
     </footer>
   )

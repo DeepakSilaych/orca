@@ -1,12 +1,26 @@
+import { Directory, useFileTree, type Tree } from './file-tree'
+import { ActionMenu, copyPath } from './action-menu'
 import { useEffect, useState } from 'react'
-import { ChevronDown, ChevronRight, Folder, GitBranch, Plus, Minus, RefreshCw } from 'lucide-react'
+import {
+  ChevronDown,
+  ChevronRight,
+  GitBranch,
+  Plus,
+  Minus,
+  RefreshCw,
+  ChevronsDownUp
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { getFileTypeIcon } from '@/lib/file-type-icons'
-import type { FileEntry, RepoStatus, Workspace } from '../../../shared/magi/types'
+import type { RepoStatus, Workspace } from '../../../shared/magi/types'
 import type { OpenFile } from './editor'
 type Props = {
+  activeFile?: OpenFile
+  requestView?: { view: string; file?: OpenFile; serial: number }
+  tree?: Tree
+
   host: string
   workspace: Workspace
   statuses: RepoStatus[]
@@ -14,102 +28,13 @@ type Props = {
   refresh: () => void
   report: (error: unknown) => void
 }
-function Directory({
-  host,
-  workspace,
-  repo,
-  directory = '',
-  depth = 0,
-  openFile
-}: {
-  host: string
-  workspace: string
-  repo: string
-  directory?: string
-  depth?: number
-  openFile: Props['openFile']
-}) {
-  const [entries, setEntries] = useState<FileEntry[]>([])
-  const [expanded, setExpanded] = useState<string[]>([])
-  const [error, setError] = useState('')
-  const [limited, setLimited] = useState(false)
-  useEffect(() => {
-    let active = true
-    window.magi
-      .request<{ entries: FileEntry[]; limited: boolean }>(host, 'files', {
-        workspace,
-        repo,
-        directory
-      })
-      .then((result) => {
-        if (active) {
-          setEntries(result.entries)
-          setLimited(result.limited)
-        }
-      })
-      .catch((e) => {
-        if (active) {
-          setError(String(e))
-        }
-      })
-    return () => {
-      active = false
-    }
-  }, [host, workspace, repo, directory])
-  return (
-    <>
-      {error && (
-        <p role="alert" className="px-3 text-xs text-destructive">
-          {error}
-        </p>
-      )}
-      {entries.map((entry) => {
-        const Icon = entry.directory ? Folder : getFileTypeIcon(entry.name)
-        const open = expanded.includes(entry.path)
-        return (
-          <div key={entry.path}>
-            <button
-              className="magi-row text-xs"
-              style={{ paddingLeft: 12 + depth * 12 }}
-              onClick={() =>
-                entry.directory
-                  ? setExpanded(
-                      open ? expanded.filter((p) => p !== entry.path) : [...expanded, entry.path]
-                    )
-                  : openFile({ repo, path: entry.path })
-              }
-            >
-              {entry.directory ? (
-                open ? (
-                  <ChevronDown className="size-3" />
-                ) : (
-                  <ChevronRight className="size-3" />
-                )
-              ) : (
-                <span className="w-3" />
-              )}
-              <Icon className="size-4 text-muted-foreground" />
-              <span className="truncate">{entry.name}</span>
-            </button>
-            {open && (
-              <Directory
-                host={host}
-                workspace={workspace}
-                repo={repo}
-                directory={entry.path}
-                depth={depth + 1}
-                openFile={openFile}
-              />
-            )}
-          </div>
-        )
-      })}
-      {limited && <p className="p-3 text-xs text-muted-foreground">First 2,000 entries shown.</p>}
-    </>
-  )
-}
 function Repository({ repo, props, view }: { repo: RepoStatus; props: Props; view: string }) {
   const [expanded, setExpanded] = useState(props.statuses.length === 1)
+  useEffect(() => {
+    if (props.activeFile?.absolutePath?.startsWith(`${repo.path}/`)) {
+      setExpanded(true)
+    }
+  }, [props.activeFile, repo.path])
   const [visibleCount, setVisibleCount] = useState(100)
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState(false)
@@ -146,6 +71,11 @@ function Repository({ repo, props, view }: { repo: RepoStatus; props: Props; vie
           {repo.utility ? 'shared' : repo.files.length || ''}
         </span>
       </button>
+      {busy && (
+        <p role="status" className="px-3 text-xs text-muted-foreground">
+          Updating {repo.name}…
+        </p>
+      )}
       {expanded && (
         <>
           <div className="flex items-center gap-1 px-3 pb-2 text-xs text-muted-foreground">
@@ -158,6 +88,8 @@ function Repository({ repo, props, view }: { repo: RepoStatus; props: Props; vie
             <p className="px-3 text-xs text-destructive">{repo.error}</p>
           ) : view === 'files' ? (
             <Directory
+              tree={props.tree!}
+              root={repo.path}
               host={props.host}
               workspace={props.workspace.id}
               repo={repo.id}
@@ -191,33 +123,59 @@ function Repository({ repo, props, view }: { repo: RepoStatus; props: Props; vie
                               ? 'var(--git-decoration-added)'
                               : 'var(--git-decoration-modified)'
                         return (
-                          <div key={file.path} className="group flex items-center px-2">
-                            <button
-                              className="magi-row min-w-0 flex-1 text-xs"
-                              onClick={() =>
-                                props.openFile({ repo: repo.id, path: file.path, scope })
+                          <ActionMenu
+                            key={file.path}
+                            actions={[
+                              {
+                                label: 'Open diff',
+                                run: () => props.openFile({ repo: repo.id, path: file.path, scope })
+                              },
+                              {
+                                label: 'Open file',
+                                disabled: code === 'D',
+                                run: () => props.openFile({ repo: repo.id, path: file.path })
+                              },
+                              { label: 'Copy relative path', run: () => copyPath(file.path) },
+                              {
+                                label: 'Copy absolute path',
+                                run: () => copyPath(`${repo.path}/${file.path}`)
+                              },
+                              {
+                                label: scope === 'staged' ? 'Unstage file' : 'Stage file',
+                                disabled: busy || file.conflict,
+                                run: () =>
+                                  action(scope === 'staged' ? 'unstage' : 'stage', file.path)
                               }
-                            >
-                              <Icon className="size-4 shrink-0 text-muted-foreground" />
-                              <span className="truncate" title={file.path}>
-                                {file.path}
-                              </span>
-                              <span className="ml-auto" style={{ color }}>
-                                {file.conflict ? '!' : code}
-                              </span>
-                            </button>
-                            <Button
-                              disabled={busy || file.conflict}
-                              aria-label={`${scope === 'staged' ? 'Unstage' : 'Stage'} ${file.path}`}
-                              variant="ghost"
-                              size="icon-xs"
-                              onClick={() =>
-                                void action(scope === 'staged' ? 'unstage' : 'stage', file.path)
-                              }
-                            >
-                              {scope === 'staged' ? <Minus /> : <Plus />}
-                            </Button>
-                          </div>
+                            ]}
+                          >
+                            <div className="group flex items-center px-2">
+                              <button
+                                className="magi-row min-w-0 flex-1 text-xs"
+                                onClick={() =>
+                                  props.openFile({ repo: repo.id, path: file.path, scope })
+                                }
+                              >
+                                <Icon className="size-4 shrink-0 text-muted-foreground" />
+                                <span className="truncate" title={file.path}>
+                                  {file.path}
+                                </span>
+                                <span className="ml-auto" style={{ color }}>
+                                  {file.conflict ? '!' : code}
+                                </span>
+                              </button>
+                              <Button
+                                disabled={busy || file.conflict}
+                                aria-label={`${scope === 'staged' ? 'Unstage' : 'Stage'} ${file.path}`}
+                                variant="ghost"
+                                size="icon-xs"
+                                onClick={() =>
+                                  void action(scope === 'staged' ? 'unstage' : 'stage', file.path)
+                                }
+                              >
+                                {scope === 'staged' ? <Minus /> : <Plus />}
+                              </Button>
+                            </div>
+                          </ActionMenu>
                         )
                       })}
                       {rows.length > visibleCount && (
@@ -265,8 +223,13 @@ function Repository({ repo, props, view }: { repo: RepoStatus; props: Props; vie
   )
 }
 export function Repositories(props: Props) {
-  const [revision, setRevision] = useState(0)
+  const tree = useFileTree(props.host, props.workspace, props.activeFile || props.requestView?.file)
   const [view, setView] = useState(props.workspace.permanent ? 'files' : 'git')
+  useEffect(() => {
+    if (props.requestView) {
+      setView(props.requestView.view)
+    }
+  }, [props.requestView])
   return (
     <aside className="flex h-full min-h-0 flex-col border-l bg-sidebar">
       <div className="flex h-11 shrink-0 items-center justify-between border-b px-2">
@@ -276,12 +239,23 @@ export function Repositories(props: Props) {
             <TabsTrigger value="git">Source control</TabsTrigger>
           </TabsList>
         </Tabs>
+        {view === 'files' && (
+          <Button
+            aria-label="Collapse all folders"
+            title="Collapse all folders"
+            variant="ghost"
+            size="icon-xs"
+            onClick={tree.collapse}
+          >
+            <ChevronsDownUp />
+          </Button>
+        )}
         <Button
           aria-label="Refresh repositories"
           variant="ghost"
           size="icon-xs"
           onClick={() => {
-            setRevision((r) => r + 1)
+            tree.refresh()
             props.refresh()
           }}
         >
@@ -290,16 +264,36 @@ export function Repositories(props: Props) {
       </div>
       <div className="min-h-0 flex-1 overflow-auto scrollbar-sleek">
         {view === 'files' && (
-          <Directory
-            key={revision}
-            host={props.host}
-            workspace={props.workspace.id}
-            repo="@workspace"
-            openFile={props.openFile}
-          />
+          <section className="border-b">
+            <p className="px-3 py-2 text-xs font-medium text-muted-foreground">Workspace files</p>
+            <Directory
+              tree={tree}
+              root={props.workspace.path}
+              host={props.host}
+              workspace={props.workspace.id}
+              repo="@workspace"
+              openFile={props.openFile}
+            />
+          </section>
+        )}
+        {view === 'files' && tree.external && (
+          <section className="border-b">
+            <p className="truncate px-3 py-2 text-xs text-muted-foreground" title={tree.external}>
+              {tree.external}
+            </p>
+            <Directory
+              host={props.host}
+              workspace={props.workspace.id}
+              repo="@files"
+              directory={tree.external}
+              root={tree.external}
+              openFile={props.openFile}
+              tree={tree}
+            />
+          </section>
         )}
         {props.statuses.map((repo) => (
-          <Repository key={`${repo.id}:${revision}`} repo={repo} props={props} view={view} />
+          <Repository key={repo.id} repo={repo} props={{ ...props, tree }} view={view} />
         ))}
         {props.statuses.length === 0 && view !== 'files' && (
           <p className="p-4 text-xs leading-relaxed text-muted-foreground">

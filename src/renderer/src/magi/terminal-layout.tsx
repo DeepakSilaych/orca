@@ -1,3 +1,6 @@
+import { TerminalAgentIcon } from './agent-icon'
+import { ActionMenu } from './action-menu'
+import { useInteractions } from './workspace-actions'
 import type { OpenFile } from './editor'
 import { useEffect, useRef, useState } from 'react'
 import type { PaneLayout, Workspace } from '../../../shared/magi/types'
@@ -32,6 +35,7 @@ function measure(
   measure(tree.second, second, overrides, panes, dividers)
 }
 export function TerminalLayout({
+  visible = true,
   openFile,
   host,
   workspace,
@@ -41,6 +45,7 @@ export function TerminalLayout({
   select,
   refresh
 }: {
+  visible?: boolean
   openFile: (file: OpenFile) => void
   host: string
   workspace: Workspace
@@ -50,6 +55,7 @@ export function TerminalLayout({
   select: (id: string) => void
   refresh: () => void
 }) {
+  const menus = useInteractions()
   const container = useRef<HTMLDivElement>(null)
   const [ratios, setRatios] = useState<Record<string, number>>({})
   const [error, setError] = useState('')
@@ -77,30 +83,43 @@ export function TerminalLayout({
   return (
     <div ref={container} className="relative h-full w-full min-h-0" data-terminal-layout>
       {panes.map((pane) => (
-        <div
+        <ActionMenu
           key={pane.terminal}
-          data-pane={pane.terminal}
-          data-active={pane.terminal === terminal}
-          className={`absolute min-h-0 min-w-0 overflow-hidden ${panes.length > 1 ? 'border' : ''} ${pane.terminal === terminal ? 'border-foreground/40' : 'border-border'}`}
-          style={{
-            left: `${pane.left}%`,
-            top: `${pane.top}%`,
-            width: `${pane.width}%`,
-            height: `${pane.height}%`
-          }}
-          onPointerDownCapture={() => select(pane.terminal)}
-          onFocusCapture={() => select(pane.terminal)}
+          actions={menus.terminal(
+            workspace,
+            workspace.terminals.find((t) => t.id === pane.terminal)!
+          )}
         >
-          <SessionTerminal
-            openFile={openFile}
-            host={host}
-            workspace={workspace.id}
-            terminal={pane.terminal}
-            fontSize={fontSize}
-            theme={theme}
-            active={pane.terminal === terminal}
-          />
-        </div>
+          <div
+            key={pane.terminal}
+            data-pane={pane.terminal}
+            data-active={pane.terminal === terminal}
+            className={`absolute min-h-0 min-w-0 overflow-hidden ${panes.length > 1 ? 'border' : ''} ${pane.terminal === terminal ? 'border-ring ring-1 ring-inset ring-ring/30' : 'border-border'}`}
+            style={{
+              left: `${pane.left}%`,
+              top: `${pane.top}%`,
+              width: `${pane.width}%`,
+              height: `${pane.height}%`
+            }}
+            onPointerDownCapture={() => select(pane.terminal)}
+            onFocusCapture={() => select(pane.terminal)}
+          >
+            {panes.length > 1 && (
+              <span className="pointer-events-none absolute right-2 top-1 z-10 rounded bg-background/80 p-1">
+                <TerminalAgentIcon terminal={pane.terminal} />
+              </span>
+            )}
+            <SessionTerminal
+              openFile={openFile}
+              host={host}
+              workspace={workspace.id}
+              terminal={pane.terminal}
+              fontSize={fontSize}
+              theme={theme}
+              active={visible && pane.terminal === terminal}
+            />
+          </div>
+        </ActionMenu>
       ))}
       {dividers.map((d) => (
         <div
@@ -126,6 +145,11 @@ export function TerminalLayout({
                   width: `${d.width}%`
                 }
           }
+          title="Drag to resize; double-click to equalize"
+          onDoubleClick={() => {
+            setRatios((old) => ({ ...old, [d.id]: 0.5 }))
+            save(d.id, 0.5)
+          }}
           onPointerDown={(e) => {
             e.preventDefault()
             e.currentTarget.setPointerCapture(e.pointerId)

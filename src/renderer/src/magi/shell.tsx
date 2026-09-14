@@ -1,28 +1,34 @@
+import { AgentIdentities } from './agent-icon'
+import { useNavigation } from './navigation-state'
+import { Feedback } from './action-menu'
+import { InteractionContext, useWorkspaceActions } from './workspace-actions'
+import { WorkspaceContent } from './workspace-content'
+import type { OpenFile } from './editor'
 import { useFileTabs } from './file-tabs'
 import { ResizableSidebar, usePanels, WorkspaceHeader } from './panels'
 import { closeActiveTab } from './close-active-tab'
 import { useWorkspaceShortcuts } from './shortcuts'
 import { TerminalTabs } from './terminal-tabs'
-import { SessionConfirmation } from './session-confirmation'
 import { WorkspaceSidebar } from './sidebar'
 import { StatusBar } from './status-bar'
-import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
-import { TerminalSquare, X } from 'lucide-react'
+import { useCallback, useEffect, useState, useRef } from 'react'
+import { X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import type { Host, Snapshot, RepoStatus, Integrations } from '../../../shared/magi/types'
 import { WorkspaceForm, type FormKind } from './forms'
 import { MagiSettings, readAppearance } from './settings'
-import { TerminalLayout } from './terminal-layout'
 import { Repositories } from './repositories'
-const FileViewer = lazy(() => import('./editor').then((module) => ({ default: module.FileViewer })))
 export function MagiShell() {
   const panels = usePanels()
-  const [host, setHost] = useState('local')
+  const navigation = useNavigation()
+  const { host, setHost, workspaceId, setWorkspaceId, terminalId, setTerminalId, validate } =
+    navigation
   const [hosts, setHosts] = useState<Host[]>([])
   const [snapshot, setSnapshot] = useState<Snapshot>()
-  const [workspaceId, setWorkspaceId] = useState('genral')
-  const [terminalId, setTerminalId] = useState('')
+  const snapshotRef = useRef(snapshot)
+  snapshotRef.current = snapshot
+  const [agents, setAgents] = useState<Record<string, string | null>>({})
   const [statuses, setStatuses] = useState<RepoStatus[]>([])
   const [integrations, setIntegrations] = useState<Integrations>()
   const [error, setError] = useState('')
@@ -32,21 +38,25 @@ export function MagiShell() {
   const [settings, setSettings] = useState(false)
   const [appearance, setAppearance] = useState(readAppearance)
   const [query, setQuery] = useState('')
-  const fileTabs = useFileTabs(JSON.stringify([host, workspaceId]))
+  const report = useCallback((error: unknown) => setError(String(error)), [])
+  const fileTabs = useFileTabs(JSON.stringify([host, workspaceId]), host, workspaceId, report)
+  const [requestView, setRequestView] = useState<{
+    view: string
+    file?: OpenFile
+    serial: number
+  }>()
   const { file, select: setFile } = fileTabs
-  const [confirm, setConfirm] = useState<'archive' | 'terminal'>()
   const [busy, setBusy] = useState(false)
   const workspace = snapshot?.workspaces.find((w) => w.id === workspaceId)
   const terminal = workspace?.terminals.find((t) => t.id === terminalId) || workspace?.terminals[0]
   const refresh = useCallback(() => setRevision((value) => value + 1), [])
-  const report = useCallback((error: unknown) => setError(String(error)), [])
   useEffect(() => {
     document.documentElement.classList.toggle('dark', appearance.theme === 'dark')
     localStorage.setItem('magi.appearance', JSON.stringify(appearance))
   }, [appearance])
   useEffect(() => {
     let active = true
-    setLoading(true)
+    setLoading(!snapshotRef.current)
     setError('')
     window.magi
       .request<Snapshot>('local', 'snapshot')
@@ -64,6 +74,7 @@ export function MagiShell() {
       .then((result) => {
         if (active) {
           setSnapshot(result)
+          validate(result.workspaces.map((w) => w.id))
           setLoading(false)
         }
       })
@@ -76,7 +87,7 @@ export function MagiShell() {
     return () => {
       active = false
     }
-  }, [host, revision, report])
+  }, [host, revision, report, validate])
   useEffect(() => {
     if (!workspace) {
       return
@@ -85,11 +96,15 @@ export function MagiShell() {
     let timer: ReturnType<typeof setTimeout>
     const poll = async () => {
       try {
-        const result = await window.magi.request<{ repos: RepoStatus[] }>(host, 'status', {
+        const result = await window.magi.request<{
+          repos: RepoStatus[]
+          agents?: Record<string, string | null> | null
+        }>(host, 'status', {
           workspace: workspace.id
         })
         if (active) {
           setStatuses(result.repos)
+          setAgents(result.agents || {})
         }
       } catch (e) {
         if (active) {
@@ -144,23 +159,29 @@ export function MagiShell() {
   }, [host, workspace])
   const selectWorkspace = (id: string) => {
     setWorkspaceId(id)
-    setTerminalId('')
-    setFile(undefined)
+    setRequestView(undefined)
     setStatuses([])
+    setAgents({})
     setIntegrations(undefined)
   }
-  const mutate = async (op: string, args: Record<string, unknown> = {}) => {
-    setBusy(true)
-    try {
-      await window.magi.request(host, op, { workspace: workspaceId, ...args })
-      refresh()
-      return true
-    } catch (e) {
-      report(e)
-      return false
-    } finally {
-      setBusy(false)
+  const interactions = useWorkspaceActions({
+    host,
+    workspaceId,
+    refresh,
+    report,
+    form: setForm,
+    select: (id, terminal) => {
+      navigation.select(id, terminal)
+      if (terminal) {
+        fileTabs.deactivate(JSON.stringify([host, id]))
+      }
+      setRequestView(undefined)
     }
+  })
+  const reveal = (file: OpenFile) => {
+    setFile(file)
+    panels.update('right', { open: true })
+    setRequestView({ view: 'files', file, serial: Date.now() })
   }
   const terminalNew = async (axis?: 'columns' | 'rows') => {
     setBusy(true)
@@ -186,7 +207,8 @@ export function MagiShell() {
     newWorkspace: () => setForm('workspace'),
     newTerminal: terminalNew,
     split: terminalNew,
-    disabled: busy || loading || !!form || settings || !!confirm,
+    disabled:
+      busy || interactions.pending || loading || !!form || settings || interactions.confirming,
     workspaces:
       snapshot?.workspaces.filter((w) => w.name.toLowerCase().includes(query.toLowerCase())) || [],
     workspace,
@@ -212,174 +234,147 @@ export function MagiShell() {
       })
   })
   return (
-    <TooltipProvider>
-      <div
-        className={`magi-shell bg-background text-foreground ${appearance.compact ? 'magi-compact' : ''}`}
-      >
-        <WorkspaceHeader host={host} name={workspace?.name} layout={panels} />
-        <div className="flex min-h-0 flex-1">
-          <ResizableSidebar side="left" layout={panels}>
-            <WorkspaceSidebar
-              refresh={refresh}
-              host={host}
-              hosts={hosts}
-              snapshot={snapshot}
-              workspaceId={workspaceId}
-              query={query}
-              setQuery={setQuery}
-              selectHost={(value) => {
-                setHost(value)
-                setSnapshot(undefined)
-                selectWorkspace('genral')
-              }}
-              selectWorkspace={selectWorkspace}
-              setForm={setForm}
-              openSettings={() => setSettings(true)}
-            />
-          </ResizableSidebar>
-          <main className="flex min-w-0 flex-1 flex-col">
-            <TerminalTabs
-              host={host}
-              refresh={refresh}
-              workspace={workspace}
-              terminal={terminal}
-              file={file}
-              busy={busy}
-              setTerminalId={setTerminalId}
-              setFile={setFile}
-              fileTabs={fileTabs}
-              terminalNew={terminalNew}
-              setForm={setForm}
-              setConfirm={setConfirm}
-            />
-            {error && (
-              <div
-                role="alert"
-                className="flex items-center gap-2 border-b px-4 py-2 text-xs text-destructive"
-              >
-                <span className="flex-1">{error}</span>
-                <Button size="xs" variant="outline" onClick={refresh}>
-                  Retry
-                </Button>
-                <Button
-                  aria-label="Dismiss error"
-                  size="icon-xs"
-                  variant="ghost"
-                  onClick={() => setError('')}
-                >
-                  <X />
-                </Button>
-              </div>
-            )}
-            <div className="relative min-h-0 flex-1">
-              {file && workspace ? (
-                <Suspense
-                  fallback={<p className="p-4 text-sm text-muted-foreground">Loading editor…</p>}
-                >
-                  <FileViewer
+    <AgentIdentities.Provider value={agents}>
+      <Feedback.Provider value={report}>
+        <InteractionContext.Provider value={interactions.menus}>
+          <TooltipProvider>
+            <div
+              className={`magi-shell bg-background text-foreground ${appearance.compact ? 'magi-compact' : ''}`}
+            >
+              <WorkspaceHeader host={host} name={workspace?.name} layout={panels} />
+              <div className="flex min-h-0 flex-1">
+                <ResizableSidebar side="left" layout={panels}>
+                  <WorkspaceSidebar
+                    refresh={refresh}
                     host={host}
-                    workspace={workspace.id}
-                    file={file}
-                    close={() => fileTabs.close()}
-                    theme={appearance.theme}
+                    hosts={hosts}
+                    snapshot={snapshot}
+                    workspaceId={workspaceId}
+                    query={query}
+                    setQuery={setQuery}
+                    selectHost={(value) => {
+                      setHost(value)
+                      setSnapshot(undefined)
+                      setStatuses([])
+                      setAgents({})
+                      setIntegrations(undefined)
+                      setRequestView(undefined)
+                    }}
+                    selectWorkspace={selectWorkspace}
+                    setForm={setForm}
+                    openSettings={() => setSettings(true)}
                   />
-                </Suspense>
-              ) : terminal && workspace ? (
-                <TerminalLayout
-                  openFile={setFile}
-                  select={setTerminalId}
-                  refresh={refresh}
-                  host={host}
-                  workspace={workspace}
-                  terminal={terminal.id}
-                  fontSize={appearance.fontSize}
-                  theme={appearance.theme}
-                />
-              ) : (
-                <div className="flex h-full flex-col items-center justify-center gap-4 text-muted-foreground">
-                  <TerminalSquare className="size-8" />
-                  <p className="text-sm">
-                    {loading
-                      ? 'Connecting to host…'
-                      : workspace
-                        ? 'Start a terminal in this workspace.'
-                        : 'Select a workspace to start.'}
-                  </p>
-                  {workspace && (
-                    <Button size="sm" onClick={() => void terminalNew()}>
-                      New terminal
-                    </Button>
+                </ResizableSidebar>
+                <main className="flex min-w-0 flex-1 flex-col">
+                  <TerminalTabs
+                    host={host}
+                    refresh={refresh}
+                    workspace={workspace}
+                    terminal={terminal}
+                    file={file}
+                    busy={busy || interactions.pending}
+                    setTerminalId={setTerminalId}
+                    setFile={setFile}
+                    fileTabs={fileTabs}
+                    terminalNew={terminalNew}
+                    reveal={reveal}
+                  />
+                  {(busy || interactions.pending) && (
+                    <p role="status" className="border-b px-3 py-1 text-xs text-muted-foreground">
+                      Updating workspace…
+                    </p>
                   )}
-                </div>
-              )}
-            </div>
-          </main>
-          <ResizableSidebar side="right" layout={panels}>
-            {workspace && (
-              <Repositories
-                key={`${host}:${workspace.id}`}
+                  {error && (
+                    <div
+                      role="alert"
+                      className="flex items-center gap-2 border-b px-4 py-2 text-xs text-destructive"
+                    >
+                      <span className="flex-1">{error}</span>
+                      <Button size="xs" variant="outline" onClick={refresh}>
+                        Retry
+                      </Button>
+                      <Button
+                        aria-label="Dismiss error"
+                        size="icon-xs"
+                        variant="ghost"
+                        onClick={() => setError('')}
+                      >
+                        <X />
+                      </Button>
+                    </div>
+                  )}
+                  <WorkspaceContent
+                    revision={revision}
+                    host={host}
+                    workspace={workspace}
+                    terminal={terminal}
+                    file={file}
+                    theme={appearance.theme}
+                    fontSize={appearance.fontSize}
+                    loading={loading}
+                    select={setTerminalId}
+                    openFile={setFile}
+                    refresh={refresh}
+                    terminalNew={terminalNew}
+                  />
+                </main>
+                <ResizableSidebar side="right" layout={panels}>
+                  {workspace && (
+                    <Repositories
+                      key={`${host}:${workspace.id}`}
+                      host={host}
+                      workspace={workspace}
+                      activeFile={file}
+                      requestView={requestView}
+                      statuses={statuses}
+                      openFile={setFile}
+                      refresh={refresh}
+                      report={report}
+                    />
+                  )}
+                </ResizableSidebar>
+              </div>
+              <StatusBar
                 host={host}
-                workspace={workspace}
+                loading={loading}
+                snapshot={snapshot}
                 statuses={statuses}
-                openFile={setFile}
-                refresh={refresh}
-                report={report}
+                integrations={integrations}
+                workspace={workspace}
+                showGit={() => {
+                  panels.update('right', { open: true })
+                  setRequestView({ view: 'git', serial: Date.now() })
+                }}
+                attachTicket={() => setForm('ticket')}
               />
-            )}
-          </ResizableSidebar>
-        </div>
-        <StatusBar
-          host={host}
-          loading={loading}
-          snapshot={snapshot}
-          statuses={statuses}
-          integrations={integrations}
-          workspace={workspace}
-          attachTicket={() => setForm('ticket')}
-        />
-        {form && snapshot && (
-          <WorkspaceForm
-            key={form}
-            kind={form}
-            host={host}
-            snapshot={snapshot}
-            workspace={workspace}
-            close={() => setForm(undefined)}
-            done={(id) => {
-              if (id) {
-                selectWorkspace(id)
-              }
-              refresh()
-            }}
-          />
-        )}
-        {settings && (
-          <MagiSettings
-            value={appearance}
-            update={setAppearance}
-            close={() => setSettings(false)}
-          />
-        )}
-        {confirm && (
-          <SessionConfirmation
-            kind={confirm}
-            busy={busy}
-            close={() => setConfirm(undefined)}
-            confirm={async () => {
-              const ok =
-                confirm === 'archive'
-                  ? await mutate('workspace_archive')
-                  : await mutate('terminal_remove', { terminal: terminal?.id })
-              if (ok) {
-                if (confirm === 'archive') {
-                  selectWorkspace('genral')
-                }
-                setConfirm(undefined)
-              }
-            }}
-          />
-        )}
-      </div>
-    </TooltipProvider>
+              {form && snapshot && (
+                <WorkspaceForm
+                  key={form}
+                  kind={form}
+                  host={host}
+                  snapshot={snapshot}
+                  workspace={workspace}
+                  close={() => setForm(undefined)}
+                  done={(id) => {
+                    if (id) {
+                      selectWorkspace(id)
+                    }
+                    refresh()
+                  }}
+                />
+              )}
+              {settings && (
+                <MagiSettings
+                  value={appearance}
+                  update={setAppearance}
+                  close={() => setSettings(false)}
+                />
+              )}
+              {interactions.dialog}
+            </div>
+          </TooltipProvider>
+        </InteractionContext.Provider>
+      </Feedback.Provider>
+    </AgentIdentities.Provider>
   )
 }

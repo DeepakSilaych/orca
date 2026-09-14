@@ -33,6 +33,7 @@ export function SessionTerminal({
     }
   }, [active])
   const container = useRef<HTMLDivElement>(null)
+  const [linkError, setLinkError] = useState('')
   const [error, setError] = useState('')
   const [attempt, setAttempt] = useState(0)
   useEffect(() => {
@@ -80,7 +81,7 @@ export function SessionTerminal({
       workspace,
       terminal,
       (file) => open.current(file),
-      (e) => setError(String(e))
+      (e) => setLinkError(String(e))
     )
     let frame = requestAnimationFrame(() => fit.fit())
     const off = window.magi.onTerminal((event) => {
@@ -98,7 +99,7 @@ export function SessionTerminal({
     const resize = new ResizeObserver(() => {
       cancelAnimationFrame(frame)
       frame = requestAnimationFrame(() => {
-        if (cancelled) {
+        if (cancelled || !container.current?.clientWidth || !container.current?.clientHeight) {
           return
         }
         fit.fit()
@@ -138,6 +139,17 @@ export function SessionTerminal({
   return (
     <div className="relative flex h-full min-h-0 flex-col">
       <div ref={container} className="magi-terminal min-h-0 flex-1 p-3" />
+      {linkError && (
+        <div
+          role="alert"
+          className="absolute inset-x-3 bottom-3 flex items-center gap-3 rounded-md border bg-popover p-3 text-sm"
+        >
+          <span className="flex-1">Could not open link: {linkError}</span>
+          <Button size="sm" onClick={() => setLinkError('')}>
+            Dismiss
+          </Button>
+        </div>
+      )}
       {error && (
         <div
           role="alert"

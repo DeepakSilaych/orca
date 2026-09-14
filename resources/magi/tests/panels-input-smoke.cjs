@@ -75,7 +75,7 @@ const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'magi-panels-qa-'))
       command
     })
     await p.waitForFunction(() => window.inputOutput.includes('MAGI_INPUT_READY\n'))
-    await p.locator('.xterm-helper-textarea').focus()
+    await p.locator('.xterm-helper-textarea:visible').focus()
     await p.keyboard.press('Shift+Enter')
     await expect.poll(() => fs.existsSync(capture)).toBe(true)
     if (fs.readFileSync(capture, 'utf8') !== '1b0d') {
