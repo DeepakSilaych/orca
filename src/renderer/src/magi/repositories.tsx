@@ -1,3 +1,4 @@
+import { GitStatusIcon, RepoStatusIcon } from './git-status-icon'
 import { Directory, useFileTree, type Tree } from './file-tree'
 import { ActionMenu, copyPath } from './action-menu'
 import { useEffect, useState } from 'react'
@@ -66,6 +67,7 @@ function Repository({ repo, props, view }: { repo: RepoStatus; props: Props; vie
         onClick={() => setExpanded(!expanded)}
       >
         {expanded ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
+        <RepoStatusIcon error={repo.error} changes={repo.files.length} />
         <span className="flex-1 truncate">{repo.name}</span>
         <span className="text-muted-foreground">
           {repo.utility ? 'shared' : repo.files.length || ''}
@@ -115,13 +117,6 @@ function Repository({ repo, props, view }: { repo: RepoStatus; props: Props; vie
                       {rows.slice(0, visibleCount).map((file) => {
                         const code = scope === 'staged' ? file.index : file.worktree
                         const Icon = getFileTypeIcon(file.path)
-                        const color = file.conflict
-                          ? 'var(--destructive)'
-                          : code === 'D'
-                            ? 'var(--git-decoration-deleted)'
-                            : file.untracked || code === 'A'
-                              ? 'var(--git-decoration-added)'
-                              : 'var(--git-decoration-modified)'
                         return (
                           <ActionMenu
                             key={file.path}
@@ -159,9 +154,7 @@ function Repository({ repo, props, view }: { repo: RepoStatus; props: Props; vie
                                 <span className="truncate" title={file.path}>
                                   {file.path}
                                 </span>
-                                <span className="ml-auto" style={{ color }}>
-                                  {file.conflict ? '!' : code}
-                                </span>
+                                <GitStatusIcon file={file} code={code} />
                               </button>
                               <Button
                                 disabled={busy || file.conflict}

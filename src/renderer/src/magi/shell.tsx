@@ -133,6 +133,7 @@ export function MagiShell() {
       return
     }
     let active = true
+    setIntegrations(undefined)
     const load = () =>
       window.magi
         .request<Integrations>(host, 'integrations', { workspace: workspace.id })

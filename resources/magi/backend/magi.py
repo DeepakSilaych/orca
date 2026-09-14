@@ -16,10 +16,9 @@ import sys
 import tempfile
 import threading
 import time
-import urllib.request
 import uuid
 
-VERSION = "0.2.5"
+VERSION = "0.2.6"
 DEFAULT_PREFERENCES = {
     "theme": "graphite", "accent": "mint", "font_family": "system",
     "font_size": 13, "line_height": 1.35, "terminal_padding": 18,
@@ -293,7 +292,7 @@ class Backend:
                     remotes.append({"name": key[:-5], "ssh": host, "root": "~/magi"})
         return {"version": VERSION, "root": str(self.root), **config, "preferences": self.preferences_get(), "workspaces": workspaces,
                 "sessRemotes": remotes, "errors": errors,
-                "tools": {t: shutil.which(t) is not None for t in ("git", "tmux", "ssh", "gh", "python3")}}
+                "tools": {t: shutil.which(t) is not None for t in ("git", "tmux", "ssh", "gh", "linear", "python3")}}
 
     def host_add(self, name, ssh, root="~/magi", **_):
         ident(name)
@@ -335,14 +334,15 @@ class Backend:
         if not r: raise ValueError("Unknown repository")
         return text(git(r["path"], "for-each-ref", "--format=%(refname:short)", "refs/heads", "refs/remotes")).splitlines()
 
-    def workspace_create(self, name, repos=None, **_):
+    def workspace_create(self, name, repos=None, ticket="", **_):
         name = name.strip()
         if not name or len(name) > 120: raise ValueError("Workspace name must be 1–120 characters")
+        issue = self.linear_issue(ticket) if ticket and ticket.strip() else None
         wid = slug(name) + "-" + uuid.uuid4().hex[:8]
         with self.lock():
             path = self.ws_path(wid)
             (path / "repos").mkdir(parents=True)
-            ws = {"id": wid, "name": name, "path": str(path), "created": time.time(), "repos": [], "terminals": [], "ticket": None, "archived": False}
+            ws = {"id": wid, "name": name, "path": str(path), "created": time.time(), "repos": [], "terminals": [], "ticket": issue["identifier"] if issue else None, "archived": False}
             self.save_ws(ws)
             self.context(ws)
         errors = []
@@ -719,12 +719,38 @@ class Backend:
             else: raise ValueError("Unsupported Git action")
         return self.status_one(r)
 
+    def linear_issue(self, ticket):
+        ticket = ticket.strip().upper()
+        if not re.fullmatch(r"[A-Z][A-Z0-9]*-\d+", ticket):
+            raise ValueError("Use a Linear ticket ID such as ENG-123")
+        if not shutil.which("linear"):
+            raise ValueError("Linear CLI missing on this host. Install schpet/linear-cli and run linear auth login on this host.")
+        try:
+            raw = run(["linear", "issue", "view", ticket, "--json", "--no-comments"], cwd=self.root, timeout=15,
+                      env=dict(os.environ, NO_COLOR="1", CI="1"))
+            issue = json.loads(raw)
+        except Exception:
+            raise ValueError("Linear could not load this issue. Check the ticket ID and run linear auth login on this host.") from None
+        if not isinstance(issue, dict) or issue.get("identifier", "").upper() != ticket:
+            raise ValueError("Linear returned an unexpected issue")
+        state = issue.get("state")
+        if not isinstance(state, dict) or not state.get("name") or not isinstance(issue.get("title"), str):
+            raise ValueError("Linear CLI returned incomplete issue details. Update schpet/linear-cli.")
+        url = issue.get("url", "")
+        if not isinstance(url, str) or not url.startswith("https://linear.app/"):
+            raise ValueError("Linear returned an invalid issue URL")
+        return {"identifier": ticket, "title": issue["title"], "url": url,
+                "state": {"name": state["name"], "type": state.get("type"),
+                          "color": state.get("color") if re.fullmatch(r"#[0-9a-fA-F]{6}", str(state.get("color", ""))) else None}}
+
     def ticket_attach(self, workspace, ticket, **_):
-        if ticket and not re.fullmatch(r"[A-Za-z][A-Za-z0-9]*-\d+", ticket): raise ValueError("Use a ticket ID such as ENG-123")
+        self.ws(workspace)
+        issue = self.linear_issue(ticket) if ticket and ticket.strip() else None
         with self.lock():
             ws = self.ws(workspace)
-            ws["ticket"] = ticket.upper() if ticket else None
+            ws["ticket"] = issue["identifier"] if issue else None
             self.save_ws(ws)
+        self.cache.clear()
         return ws
 
     def integrations(self, workspace, force=False, **_):
@@ -741,16 +767,8 @@ class Backend:
         prs = list(POOL.map(pr, ws["repos"]))
         ticket = {"id": ws.get("ticket"), "issue": None, "error": None}
         if ws.get("ticket"):
-            api_key = os.environ.get("LINEAR_API_KEY", "")
-            if not api_key: ticket["error"] = "Set LINEAR_API_KEY on this host to fetch live ticket status."
-            else:
-                try:
-                    payload = {"query": "query($id:String!){issue(id:$id){identifier title url state{name}}}", "variables": {"id": ws["ticket"]}}
-                    req = urllib.request.Request("https://api.linear.app/graphql", json.dumps(payload).encode(), {"Content-Type": "application/json", "Authorization": api_key})
-                    with urllib.request.urlopen(req, timeout=10) as res: result = json.load(res)
-                    if result.get("errors"): raise ValueError("Linear could not resolve this ticket")
-                    ticket["issue"] = result["data"]["issue"]
-                except Exception as e: ticket["error"] = str(e)
+            try: ticket["issue"] = self.linear_issue(ws["ticket"])
+            except Exception as e: ticket["error"] = str(e)
         result = {"prs": prs, "ticket": ticket, "at": time.time()}
         self.cache[key] = (time.monotonic(), result)
         return result

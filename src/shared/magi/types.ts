@@ -54,12 +54,17 @@ export type Integrations = {
   prs: {
     repo: string
     error: string | null
-    prs: { number: number; state: string; url: string; title: string }[]
+    prs: { number: number; state: string; url: string; title: string; isDraft?: boolean }[]
   }[]
   ticket: {
     id?: string
     error?: string
-    issue?: { identifier: string; title: string; url: string; state: { name: string } }
+    issue?: {
+      identifier: string
+      title: string
+      url: string
+      state: { name: string; type?: string | null; color?: string | null }
+    }
   }
 }
 export type TerminalEvent = {

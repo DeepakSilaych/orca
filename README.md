@@ -19,6 +19,8 @@ Magi builds on Orca's UI with sess-owned local and SSH sessions. Each workspace 
 - File tabs support Reveal in file tree and Close other files; the tree highlights the active file and preserves expanded folders on refresh. Read-only previews and diff tabs are labeled explicitly.
 - Double-click split dividers to equalize panes. PRs use a compact menu; the changes count opens source control and an attached Linear ticket opens its URL.
 - Agent logos replace generic terminal icons for Claude Code, Codex, Gemini CLI, OpenCode, Aider, Amp, Droid, GitHub Copilot, Cursor Agent, and Pi. Detection uses foreground processes on the execution host, refreshes with workspace status, and falls back to the terminal icon when identity is unavailable. Logos are bundled locally.
+- Git changes and pull requests use colored status icons with descriptive hover labels.
+- Attach verified Linear tickets during workspace creation or from the status bar. Install [schpet/linear-cli](https://github.com/schpet/linear-cli) and run `linear auth login` on each execution host; Magi refreshes live ticket status every minute.
 - Settings contains theme, terminal font size, compact rows and release updates.
 
 VM terminal selection uses the local clipboard: drag to select, then Cmd+C on macOS (Ctrl+Shift+C on Linux). Ctrl+C remains a terminal interrupt. Ordinary dragging selects locally even when an agent captures mouse input; hold Option/Alt to send clicks and drags to the agent. Magi enables mouse scrolling for its own tmux sessions so the wheel scrolls terminal history instead of sending arrow keys. Copy-path actions also use the native clipboard.
@@ -51,7 +53,7 @@ The cask installs Git, gh, tmux and Python for local sessions. Install your codi
 
 ## macOS release
 
-**v0.2.5 supports Apple Silicon on macOS 12+.** It uses an ad-hoc signature with strict verification during packaging. It is **not Developer ID-signed or notarized**: macOS may still block first launch and require approval in System Settings → Privacy & Security. The tap does not disable Gatekeeper or remove quarantine.
+**v0.2.6 supports Apple Silicon on macOS 12+.** It uses an ad-hoc signature with strict verification during packaging. It is **not Developer ID-signed or notarized**: macOS may still block first launch and require approval in System Settings → Privacy & Security. The tap does not disable Gatekeeper or remove quarantine.
 
 If a manual copy already exists in Applications, move that app aside before Homebrew installation. Workspace data is separate and retained. Direct DMG and ZIP downloads are also available from Releases. Automatic in-app installation remains disabled until signed updates are available.
 

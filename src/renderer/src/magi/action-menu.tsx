@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 export type Action = {
   label: string
+  icon?: ReactNode
   run: () => void | Promise<unknown>
   disabled?: boolean
   danger?: boolean
@@ -41,6 +42,7 @@ export function ActionMenu({
         variant={a.danger ? 'destructive' : 'default'}
         onSelect={() => run(a)}
       >
+        {a.icon}
         {a.label}
         {a.shortcut && (
           <span aria-hidden="true" className="ml-auto pl-4 text-xs text-muted-foreground">

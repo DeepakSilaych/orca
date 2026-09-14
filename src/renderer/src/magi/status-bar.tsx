@@ -1,5 +1,16 @@
+import { PullRequestIcon } from './git-status-icon'
 import { useContext } from 'react'
-import { Server, GitBranch, Link2, Ellipsis, GitPullRequest } from 'lucide-react'
+import {
+  Server,
+  GitBranch,
+  Link2,
+  Ellipsis,
+  CircleHelp,
+  CircleCheck,
+  CircleDot,
+  CircleDashed,
+  CircleX
+} from 'lucide-react'
 import type { Snapshot, RepoStatus, Integrations, Workspace } from '../../../shared/magi/types'
 import { ActionMenu, copyPath, Feedback } from './action-menu'
 export function StatusBar({
@@ -25,6 +36,17 @@ export function StatusBar({
     prs = integrations?.prs.flatMap((r) => r.prs.map((pr) => ({ ...pr, repo: r.repo }))) || []
   const issue = integrations?.ticket.issue,
     url = issue?.url
+  const TicketIcon = integrations?.ticket.error
+    ? CircleHelp
+    : issue?.state.type === 'completed'
+      ? CircleCheck
+      : issue?.state.type === 'canceled'
+        ? CircleX
+        : issue?.state.type === 'started'
+          ? CircleDot
+          : issue
+            ? CircleDot
+            : CircleDashed
   const errors = integrations?.prs.filter((r) => r.error) || []
   return (
     <footer className="flex h-7 shrink-0 items-center gap-3 border-t px-3 text-xs text-muted-foreground">
@@ -45,7 +67,8 @@ export function StatusBar({
           dropdown
           actions={[
             ...prs.map((pr) => ({
-              label: `${pr.repo} #${pr.number} · ${pr.state.toLowerCase()} — ${pr.title}`,
+              label: `${pr.repo} #${pr.number} — ${pr.title}`,
+              icon: <PullRequestIcon state={pr.state} draft={pr.isDraft} />,
               run: () => window.magi.openExternal(pr.url)
             })),
             ...errors.map((r) => ({
@@ -59,7 +82,11 @@ export function StatusBar({
             className="flex shrink-0 items-center gap-1 hover:text-foreground"
             aria-label="Pull requests"
           >
-            <GitPullRequest className="size-3" />
+            {prs.length ? (
+              <PullRequestIcon state={prs[0].state} draft={prs[0].isDraft} />
+            ) : (
+              <CircleHelp className="size-3 text-destructive" />
+            )}
             {prs.length} PRs{errors.length ? ' · unavailable' : ''}
           </button>
         </ActionMenu>
@@ -68,13 +95,39 @@ export function StatusBar({
       {workspace && (
         <div className="flex min-w-0 items-center gap-1">
           <button
-            title={issue?.title || integrations?.ticket.error || 'Attach Linear ticket'}
+            title={
+              integrations?.ticket.error ||
+              (issue ? `${issue.title} · ${issue.state.name}` : 'Attach Linear ticket')
+            }
             className="flex min-w-0 items-center gap-1 hover:text-foreground"
             onClick={() =>
               url ? void window.magi.openExternal(url).catch(report) : attachTicket()
             }
           >
-            <Link2 className="size-3 shrink-0" />
+            {workspace.ticket ? (
+              <TicketIcon
+                role="img"
+                aria-label={
+                  integrations?.ticket.error
+                    ? 'Linear status unavailable'
+                    : issue?.state.name || 'Loading ticket status'
+                }
+                className="size-3 shrink-0"
+                style={{
+                  color: integrations?.ticket.error
+                    ? 'var(--destructive)'
+                    : issue?.state.color
+                      ? issue.state.color
+                      : issue?.state.type === 'completed'
+                        ? 'var(--status-success)'
+                        : issue?.state.type === 'started'
+                          ? 'var(--workspace-status-progress)'
+                          : 'var(--muted-foreground)'
+                }}
+              />
+            ) : (
+              <Link2 className="size-3 shrink-0" />
+            )}
             <span className="truncate">
               {issue
                 ? `${issue.identifier} · ${issue.state.name}`

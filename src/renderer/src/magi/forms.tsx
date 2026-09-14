@@ -34,7 +34,8 @@ export function WorkspaceForm({
   close: () => void
   done: (workspace?: string) => void
 }) {
-  const [name, setName] = useState('')
+  const [name, setName] = useState(kind === 'ticket' ? workspace?.ticket || '' : '')
+  const [ticket, setTicket] = useState('')
   const [path, setPath] = useState('')
   const [url, setUrl] = useState('')
   const [ssh, setSsh] = useState('local-vm')
@@ -75,7 +76,7 @@ export function WorkspaceForm({
         const result = await window.magi.request<{
           workspace: Workspace
           errors: { repo: string; error: string }[]
-        }>(host, 'workspace_create', { name, repos })
+        }>(host, 'workspace_create', { name, repos, ticket })
         if (result.errors.length) {
           done(result.workspace.id)
           throw new Error(
@@ -147,6 +148,25 @@ export function WorkspaceForm({
                 onChange={(e) => setName(e.target.value)}
               />
             </div>
+          )}
+          {kind === 'workspace' && (
+            <div className="space-y-2">
+              <Label htmlFor="magi-ticket">Linear ticket (optional)</Label>
+              <Input
+                id="magi-ticket"
+                value={ticket}
+                onChange={(e) => setTicket(e.target.value)}
+                placeholder="ENG-123"
+              />
+              <p className="text-xs text-muted-foreground">
+                Verified using Linear CLI on {host}. Its live status appears below your workspace.
+              </p>
+            </div>
+          )}
+          {kind === 'ticket' && (
+            <p className="text-xs text-muted-foreground">
+              Verified using Linear CLI on {host}. Clear the ID to detach.
+            </p>
           )}
           {kind === 'host' && (
             <>
