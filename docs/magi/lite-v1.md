@@ -89,3 +89,9 @@ node resources/magi/tests/layout-smoke.cjs
 ```
 
 Electron smoke tests launch hidden windows against disposable local roots and never touch real VM sessions. Set `MAGI_EXECUTABLE` to a packaged Magi executable to validate the shipped runtime.
+
+### Homebrew and macOS signatures (v0.2.1)
+
+Install with `brew install --cask deepaksilaych/tap/magi`. The tap is maintained at `DeepakSilaych/homebrew-tap`; update its cask version and SHA-256 after publishing each release. Casks retain normal macOS quarantine behavior and do not remove workspace data.
+
+v0.2.0 shipped with an invalid residual app signature. v0.2.1 explicitly ad-hoc signs the bundle, uses Electron's JIT/library-loading entitlements and runs strict recursive signature verification before packaging. Ad-hoc signing is not Developer ID signing or notarization; first-launch approval can still be necessary and the automatic updater remains disabled. Finder launches seed standard Homebrew binary paths so the cask's Python/tmux dependencies are discoverable.

@@ -7,10 +7,11 @@ const { execFileSync } = require('node:child_process')
 const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'magi-panels-qa-'))
 ;(async () => {
   const app = await electron.launch({
-    executablePath: require('electron'),
-    args: ['.'],
+    executablePath: process.env.MAGI_EXECUTABLE || require('electron'),
+    args: process.env.MAGI_EXECUTABLE ? [] : ['.'],
     env: {
       ...process.env,
+      ...(process.env.MAGI_TEST_GUI_PATH ? { PATH: '/usr/bin:/bin:/usr/sbin:/sbin' } : {}),
       ORCA_BACKGROUND_LAUNCH: '1',
       MAGI_ROOT: path.join(fixture, 'root'),
       MAGI_USER_DATA_PATH: path.join(fixture, 'profile')

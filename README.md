@@ -29,15 +29,25 @@ Use Cmd on macOS; Ctrl on Linux.
 
 Splits can nest. Drag their dividers to resize; layouts and order survive restart. Closing an individual pane ends that session. Archiving an empty workspace retains its worktrees; Genral cannot be archived.
 
-## Next version (development)
+## Install with Homebrew
 
-Drag either sidebar edge to resize it; use the top-right panel buttons to hide or restore workspaces and repositories. Widths and visibility persist. Shift+Enter uses Orca’s terminal newline encoding instead of submitting as plain Enter.
+```sh
+brew install --cask deepaksilaych/tap/magi
+```
 
-## First release
+Or run `brew tap deepaksilaych/tap`, then `brew install --cask magi`. Update with `brew update && brew upgrade --cask magi`.
 
-**v0.2.0 is an unsigned, unnotarized macOS Apple Silicon build.** Open the DMG and drag Magi into Applications. macOS may require approval in System Settings → Privacy & Security on first launch. This build provides a Releases link for manual updates; automatic installation is disabled until a signed build is available. Replacing the app preserves workspace data and sess sessions.
+The cask installs Git, gh, tmux and Python for local sessions. Install your coding-agent CLI separately; remote hosts need their own tools and must be reachable through SSH.
 
-Execution hosts require Python 3, Git and tmux. Install `gh` for GitHub cloning and PR status, and your preferred coding-agent CLI separately. SSH hosts must already be reachable through your SSH config. Native Windows sessions are not supported in this release. Intel Mac and Linux desktop packages are not included in this first build.
+## macOS release
+
+**v0.2.1 supports Apple Silicon on macOS 12+.** It repairs v0.2.0's invalid bundle signature using an ad-hoc signature with strict verification during packaging. It is **not Developer ID-signed or notarized**: macOS may still block first launch and require approval in System Settings → Privacy & Security. The tap does not disable Gatekeeper or remove quarantine.
+
+If a manual copy already exists in Applications, move that app aside before Homebrew installation. Workspace data is separate and retained. Direct DMG and ZIP downloads are also available from Releases. Automatic in-app installation remains disabled until signed updates are available.
+
+Both sidebars resize by dragging their inner edges; the top-right buttons hide or restore them. Widths and visibility persist. Shift+Enter uses Orca's non-submit terminal encoding.
+
+Native Windows sessions are not supported. Intel Mac and Linux desktop installers are not included in this release.
 
 ## Development
 

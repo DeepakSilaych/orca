@@ -15,7 +15,7 @@ export function createUpdates(publish: (state: UpdateState) => void) {
     version: app.isPackaged ? app.getVersion() : '0.2.1-dev',
     message:
       app.isPackaged && !supported
-        ? 'This build is unsigned. Install updates from View releases; automatic installation requires a signed build.'
+        ? 'This build is not Developer ID-signed. Install updates from View releases; automatic installation requires a signed build.'
         : app.isPackaged
           ? 'Updates come from Magi releases on GitHub.'
           : 'This is a development build. Install a Magi release to enable updates.',

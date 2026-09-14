@@ -24,6 +24,10 @@ extraResources:
 asarUnpack:
   - '**/node-pty/**'
 mac:
+  identity: "-"
+  hardenedRuntime: true
+  entitlements: resources/magi/entitlements.mac.plist
+  entitlementsInherit: resources/magi/entitlements.mac.plist
   icon: resources/magi/brand/icon.icns
   category: public.app-category.developer-tools
   target:
