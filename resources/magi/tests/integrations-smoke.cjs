@@ -34,7 +34,9 @@ print(json.dumps({'identifier':'ENG-123','title':'Checkout regression','url':'ht
     await p.locator('.xterm-helper-textarea:visible').waitFor()
     await p.getByRole('button', { name: 'New workspace', exact: true }).click()
     await p.getByLabel('Name', { exact: true }).fill('Linked task')
-    await p.getByLabel('Linear ticket (optional)').fill('ENG-123')
+    await p
+      .getByLabel('Linear ticket ID or URL (optional)')
+      .fill('https://linear.app/acme/issue/ENG-123/checkout?source=copy')
     await p.getByRole('button', { name: 'New workspace', exact: true }).last().click()
     await expect(p.locator('footer')).toContainText('ENG-123 · In Progress')
     await expect(
@@ -47,14 +49,14 @@ print(json.dumps({'identifier':'ENG-123','title':'Checkout regression','url':'ht
     expect(ws.ticket).toBe('ENG-123')
     await p.getByRole('button', { name: 'Ticket actions' }).click()
     await p.getByRole('menuitem', { name: 'Edit attached ticket' }).click()
-    await expect(p.getByLabel('Ticket ID')).toHaveValue('ENG-123')
-    await p.getByLabel('Ticket ID').fill('ENG-404')
+    await expect(p.getByLabel('Ticket ID or URL')).toHaveValue('ENG-123')
+    await p.getByLabel('Ticket ID or URL').fill('ENG-404')
     await p.getByRole('button', { name: 'Attach Linear ticket', exact: true }).click()
     await expect(p.getByRole('alert')).toContainText('Linear could not load this issue')
     expect((await request('snapshot')).workspaces.find((w) => w.id === ws.id).ticket).toBe(
       'ENG-123'
     )
-    await p.getByLabel('Ticket ID').fill('')
+    await p.getByLabel('Ticket ID or URL').fill('')
     await p.getByRole('button', { name: 'Attach Linear ticket', exact: true }).click()
     await expect(p.locator('footer')).toContainText('Attach ticket')
     expect((await request('snapshot')).workspaces.find((w) => w.id === ws.id).ticket).toBeNull()

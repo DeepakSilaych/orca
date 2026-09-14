@@ -132,14 +132,14 @@ export function WorkspaceForm({
         >
           {kind !== 'attach' && (
             <div className="space-y-2">
-              <Label htmlFor="magi-name">{kind === 'ticket' ? 'Ticket ID' : 'Name'}</Label>
+              <Label htmlFor="magi-name">{kind === 'ticket' ? 'Ticket ID or URL' : 'Name'}</Label>
               <Input
                 id="magi-name"
                 autoFocus
                 required={kind !== 'repo' && kind !== 'ticket'}
                 placeholder={
                   kind === 'ticket'
-                    ? workspace?.ticket || 'ENG-123'
+                    ? workspace?.ticket || 'ENG-123 or https://linear.app/…'
                     : kind === 'repo'
                       ? 'Optional repository name'
                       : 'Name'
@@ -151,12 +151,12 @@ export function WorkspaceForm({
           )}
           {kind === 'workspace' && (
             <div className="space-y-2">
-              <Label htmlFor="magi-ticket">Linear ticket (optional)</Label>
+              <Label htmlFor="magi-ticket">Linear ticket ID or URL (optional)</Label>
               <Input
                 id="magi-ticket"
                 value={ticket}
                 onChange={(e) => setTicket(e.target.value)}
-                placeholder="ENG-123"
+                placeholder="ENG-123 or https://linear.app/…"
               />
               <p className="text-xs text-muted-foreground">
                 Verified using Linear CLI on {host}. Its live status appears below your workspace.

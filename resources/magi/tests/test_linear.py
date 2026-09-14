@@ -58,3 +58,11 @@ class LinearTests(unittest.TestCase):
         for data in [None, {}, {**ISSUE, 'identifier': 'ENG-999'}, {**ISSUE, 'url': 'file:///tmp/x'}, {**ISSUE, 'state': None}]:
             with mock.patch.object(magi.shutil, 'which', return_value='/bin/linear'), mock.patch.object(magi, 'run', return_value=json.dumps(data)):
                 with self.assertRaises(ValueError): self.backend.linear_issue('ENG-123')
+
+    def test_linear_urls_normalize_and_reject_other_links(self):
+        with mock.patch.object(magi.shutil, 'which', return_value='/bin/linear'), mock.patch.object(magi, 'run', return_value=json.dumps(ISSUE)) as run:
+            for value in ['https://linear.app/acme/issue/ENG-123/checkout?source=copy#details', 'https://linear.app/acme/issue/eng-123', ' https://linear.app/acme/issue/ENG-123/ ']:
+                self.assertEqual(self.backend.linear_issue(value)['identifier'], 'ENG-123')
+                self.assertEqual(run.call_args.args[0][3], 'ENG-123')
+            for value in ['https://evil.test/acme/issue/ENG-123', 'https://linear.app.evil.test/acme/issue/ENG-123', 'https://linear.app/acme/project/ENG-123', 'http://linear.app/acme/issue/ENG-123', 'https://user@linear.app/acme/issue/ENG-123']:
+                with self.assertRaises(ValueError): self.backend.linear_issue(value)

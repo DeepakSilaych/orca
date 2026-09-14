@@ -17,8 +17,9 @@ import tempfile
 import threading
 import time
 import uuid
+from urllib.parse import urlsplit, unquote
 
-VERSION = "0.2.6"
+VERSION = "0.2.7"
 DEFAULT_PREFERENCES = {
     "theme": "graphite", "accent": "mint", "font_family": "system",
     "font_size": 13, "line_height": 1.35, "terminal_padding": 18,
@@ -720,9 +721,16 @@ class Backend:
         return self.status_one(r)
 
     def linear_issue(self, ticket):
-        ticket = ticket.strip().upper()
+        ticket = ticket.strip()
+        if ticket.lower().startswith(("https://", "http://")):
+            url = urlsplit(ticket)
+            match = re.fullmatch(r"/[^/]+/issue/([A-Za-z][A-Za-z0-9]*-\d+)(?:/[^/]*)?/?", unquote(url.path))
+            if url.scheme != "https" or url.hostname != "linear.app" or url.username or url.password or url.port or not match:
+                raise ValueError("Paste a Linear issue URL (https://linear.app/team/issue/ENG-123/title) or ticket ID")
+            ticket = match[1]
+        ticket = ticket.upper()
         if not re.fullmatch(r"[A-Z][A-Z0-9]*-\d+", ticket):
-            raise ValueError("Use a Linear ticket ID such as ENG-123")
+            raise ValueError("Use a Linear issue URL or ticket ID such as ENG-123")
         if not shutil.which("linear"):
             raise ValueError("Linear CLI missing on this host. Install schpet/linear-cli and run linear auth login on this host.")
         try:
