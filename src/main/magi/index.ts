@@ -1,3 +1,4 @@
+import { configureHomebrewPath } from './homebrew-path'
 import { createUpdates } from './updates'
 import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from 'electron'
 import { join, resolve } from 'node:path'
@@ -5,17 +6,7 @@ import { mkdirSync } from 'node:fs'
 import { spawn, type IPty } from 'node-pty'
 import { Hosts, quote, sshOptions } from './host-client'
 import type { TerminalEvent, WorkspaceShortcut } from '../../shared/magi/types'
-
-// Finder launches do not inherit Homebrew's shell PATH.
-if (app.isPackaged && process.platform === 'darwin') {
-  process.env.PATH = [
-    ...new Set([
-      '/opt/homebrew/bin',
-      '/usr/local/bin',
-      ...(process.env.PATH || '/usr/bin:/bin:/usr/sbin:/sbin').split(':')
-    ])
-  ].join(':')
-}
+configureHomebrewPath(app.isPackaged)
 const profile = process.env.MAGI_USER_DATA_PATH || join(app.getPath('appData'), 'magi-orca')
 mkdirSync(profile, { recursive: true })
 app.setPath('userData', profile)
