@@ -49,6 +49,7 @@ export function SessionTerminal({
       fontSize,
       fontFamily: 'Menlo, Monaco, monospace',
       cursorBlink: true,
+      mouseEventsRequireAlt: true,
       scrollback: 10000,
       theme: {
         background: style.getPropertyValue('--background').trim(),

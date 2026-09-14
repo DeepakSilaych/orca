@@ -38,9 +38,16 @@ const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'magi-copy-qa-')),
   try {
     await p.getByRole('combobox', { name: 'Execution host' }).waitFor()
     await app.evaluate(({ clipboard, ipcMain }) => {
+      global.savedClipboard = clipboard
+        .availableFormats()
+        .map((format) => [format, clipboard.readBuffer(format)])
       global.copies = []
       global.input = []
-      clipboard.writeText = (text) => global.copies.push(text)
+      const writeText = clipboard.writeText.bind(clipboard)
+      clipboard.writeText = (text) => {
+        global.copies.push(text)
+        writeText(text)
+      }
       ipcMain.on('magi:write', (_e, _key, data) => global.input.push(data))
     })
     await request('local', 'host_add', { name: remote, ssh: 'local-vm', root: remoteRoot })
@@ -62,13 +69,19 @@ const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'magi-copy-qa-')),
           return 'starting'
         }
       })
-      .toBe('off')
+      .toBe('on')
     const session = JSON.stringify([remote, ws.id, t.id]),
       sample = 'VM_COPY_SELECTION_123'
     await p.evaluate(
-      ({ session, sample }) => window.magi.write(session, `printf '\\n${sample}\\n'\r`),
+      ({ session, sample }) =>
+        window.magi.write(session, `printf '\\033[?1000h\\033[?1006h\\n${sample}\\n'\r`),
       { session, sample }
     )
+    await expect
+      .poll(() =>
+        ssh(`tmux display-message -p -t '=magi-${t.id}:' '#{mouse_standard_flag}'`).trim()
+      )
+      .toBe('1')
     const row = p.locator('.xterm-rows > div').filter({ hasText: sample }).last()
     await expect.poll(async () => (await row.innerText()).trim()).toBe(sample)
     const span = row.locator('span').filter({ hasText: sample }).first(),
@@ -82,18 +95,59 @@ const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'magi-copy-qa-')),
       ...(process.platform === 'darwin' ? [] : ['shift'])
     ])
     await expect.poll(() => app.evaluate(() => global.copies.at(-1))).toBe(sample)
-    const count = await app.evaluate(() => global.copies.length)
+    await expect.poll(() => app.evaluate(({ clipboard }) => clipboard.readText())).toBe(sample)
+    await app.evaluate(({ clipboard }) => clipboard.writeText('stale clipboard'))
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].webContents.copy())
-    await expect.poll(() => app.evaluate(() => global.copies.length)).toBeGreaterThan(count)
-    expect(await app.evaluate(() => global.copies.at(-1))).toBe(sample)
+    await expect.poll(() => app.evaluate(({ clipboard }) => clipboard.readText())).toBe(sample)
+    await app.evaluate(({ clipboard }) => clipboard.writeText('stale clipboard'))
+    await p.keyboard.down(process.platform === 'darwin' ? 'Meta' : 'Control')
+    if (process.platform !== 'darwin') {
+      await p.keyboard.down('Shift')
+    }
+    await p.keyboard.press('c')
+    await p.keyboard.up(process.platform === 'darwin' ? 'Meta' : 'Control')
+    if (process.platform !== 'darwin') {
+      await p.keyboard.up('Shift')
+    }
+    await expect.poll(() => app.evaluate(({ clipboard }) => clipboard.readText())).toBe(sample)
     await p.locator('.xterm-helper-textarea:visible').focus()
     await key('c', ['control'])
     await expect.poll(() => app.evaluate(() => global.input.includes('\x03'))).toBe(true)
     await p.getByRole('button', { name: 'Terminal 1', exact: true }).click({ button: 'right' })
     await p.getByRole('menuitem', { name: 'Copy current path', exact: true }).click()
     await expect.poll(() => app.evaluate(() => global.copies.at(-1))).toBe(ws.path)
+    await p.evaluate(
+      ({ session }) =>
+        window.magi.write(
+          session,
+          "printf '\\033[?1000l\\033[?1006l'; for i in {1..100}; do echo WHEEL_HISTORY_$i; done\r"
+        ),
+      { session }
+    )
+    await expect
+      .poll(async () =>
+        p.locator('.xterm-rows > div').filter({ hasText: 'WHEEL_HISTORY_100' }).count()
+      )
+      .toBeGreaterThan(0)
+    await app.evaluate(() => {
+      global.input = []
+    })
+    const screen = await p.locator('.xterm-screen:visible').boundingBox()
+    await p.mouse.move(screen.x + screen.width / 2, screen.y + screen.height / 2)
+    await p.mouse.wheel(0, -360)
+    await expect
+      .poll(() => ssh(`tmux display-message -p -t '=magi-${t.id}:' '#{pane_in_mode}'`).trim())
+      .toBe('1')
+    expect(
+      await app.evaluate(() =>
+        global.input.some((data) =>
+          ['\x1b[A', '\x1b[B', '\x1bOA', '\x1bOB'].some((arrow) => data.includes(arrow))
+        )
+      )
+    ).toBe(false)
+    ssh(`tmux send-keys -t '=magi-${t.id}:' -X cancel`)
     console.log(
-      'PASS: actual VM drag selection + Cmd-C via native clipboard IPC; Ctrl-C still interrupts; delayed VM Copy current path works.'
+      'PASS: actual VM drag selection under application mouse capture + Cmd-C and native Edit Copy verified against system clipboard; Ctrl-C still interrupts; VM path copying works; wheel enters tmux history without sending arrow keys.'
     )
   } finally {
     for (const host of ['local', ...(remoteReady ? [remote] : [])]) {
@@ -103,6 +157,15 @@ const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'magi-copy-qa-')),
         }
       }
     }
+    await app.evaluate(({ clipboard }) => {
+      if (!global.copies.includes(clipboard.readText())) {
+        return
+      }
+      clipboard.clear()
+      for (const [format, data] of global.savedClipboard || []) {
+        clipboard.writeBuffer(format, data)
+      }
+    })
     await app.close()
     fs.rmSync(fixture, { recursive: true, force: true })
     ssh(`rm -rf -- '${remoteRoot}'`)

@@ -14,7 +14,11 @@ export function installTerminalCopy(term: Terminal, container: HTMLElement, copy
     }
     event.preventDefault()
     event.stopImmediatePropagation()
-    copy()
+    if (event.clipboardData) {
+      event.clipboardData.setData('text/plain', term.getSelection())
+    } else {
+      copy()
+    }
   }
   document.addEventListener('copy', handler, true)
   return () => document.removeEventListener('copy', handler, true)
