@@ -46,7 +46,7 @@ export function WorkspaceSidebar({
   openSettings: () => void
 }) {
   return (
-    <aside className="flex w-60 shrink-0 flex-col border-r bg-sidebar text-sidebar-foreground">
+    <aside className="flex h-full w-full shrink-0 flex-col border-r bg-sidebar text-sidebar-foreground">
       <div className="flex items-center gap-2 p-3">
         {host === 'local' ? (
           <Monitor className="size-4 shrink-0 text-muted-foreground" />

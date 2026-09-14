@@ -29,6 +29,10 @@ Use Cmd on macOS; Ctrl on Linux.
 
 Splits can nest. Drag their dividers to resize; layouts and order survive restart. Closing an individual pane ends that session. Archiving an empty workspace retains its worktrees; Genral cannot be archived.
 
+## Next version (development)
+
+Drag either sidebar edge to resize it; use the top-right panel buttons to hide or restore workspaces and repositories. Widths and visibility persist. Shift+Enter uses Orca’s terminal newline encoding instead of submitting as plain Enter.
+
 ## First release
 
 **v0.2.0 is an unsigned, unnotarized macOS Apple Silicon build.** Open the DMG and drag Magi into Applications. macOS may require approval in System Settings → Privacy & Security on first launch. This build provides a Releases link for manual updates; automatic installation is disabled until a signed build is available. Replacing the app preserves workspace data and sess sessions.

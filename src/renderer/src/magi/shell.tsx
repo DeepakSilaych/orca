@@ -1,4 +1,4 @@
-import magiIcon from '../../../../resources/magi/brand/icon.svg'
+import { ResizableSidebar, usePanels, WorkspaceHeader } from './panels'
 import { closeActiveTab } from './close-active-tab'
 import { useWorkspaceShortcuts } from './shortcuts'
 import { TerminalTabs } from './terminal-tabs'
@@ -17,6 +17,7 @@ import { Repositories } from './repositories'
 import type { OpenFile } from './editor'
 const FileViewer = lazy(() => import('./editor').then((module) => ({ default: module.FileViewer })))
 export function MagiShell() {
+  const panels = usePanels()
   const [host, setHost] = useState('local')
   const [hosts, setHosts] = useState<Host[]>([])
   const [snapshot, setSnapshot] = useState<Snapshot>()
@@ -214,40 +215,27 @@ export function MagiShell() {
       <div
         className={`magi-shell bg-background text-foreground ${appearance.compact ? 'magi-compact' : ''}`}
       >
-        <header className="magi-drag flex h-10 shrink-0 items-center border-b px-4">
-          <span
-            className={
-              navigator.platform.includes('Mac')
-                ? 'ml-20 text-sm font-semibold'
-                : 'text-sm font-semibold'
-            }
-          >
-            <img src={magiIcon} alt="" className="mr-2 inline-block size-5" />
-            Magi
-          </span>
-          <span className="ml-3 text-xs text-muted-foreground">
-            {host === 'local' ? 'Local' : host}
-            {workspace && ` / ${workspace.name}`}
-          </span>
-        </header>
+        <WorkspaceHeader host={host} name={workspace?.name} layout={panels} />
         <div className="flex min-h-0 flex-1">
-          <WorkspaceSidebar
-            refresh={refresh}
-            host={host}
-            hosts={hosts}
-            snapshot={snapshot}
-            workspaceId={workspaceId}
-            query={query}
-            setQuery={setQuery}
-            selectHost={(value) => {
-              setHost(value)
-              setSnapshot(undefined)
-              selectWorkspace('genral')
-            }}
-            selectWorkspace={selectWorkspace}
-            setForm={setForm}
-            openSettings={() => setSettings(true)}
-          />
+          <ResizableSidebar side="left" layout={panels}>
+            <WorkspaceSidebar
+              refresh={refresh}
+              host={host}
+              hosts={hosts}
+              snapshot={snapshot}
+              workspaceId={workspaceId}
+              query={query}
+              setQuery={setQuery}
+              selectHost={(value) => {
+                setHost(value)
+                setSnapshot(undefined)
+                selectWorkspace('genral')
+              }}
+              selectWorkspace={selectWorkspace}
+              setForm={setForm}
+              openSettings={() => setSettings(true)}
+            />
+          </ResizableSidebar>
           <main className="flex min-w-0 flex-1 flex-col">
             <TerminalTabs
               host={host}
@@ -323,7 +311,7 @@ export function MagiShell() {
               )}
             </div>
           </main>
-          <div className="w-80 shrink-0">
+          <ResizableSidebar side="right" layout={panels}>
             {workspace && (
               <Repositories
                 host={host}
@@ -334,7 +322,7 @@ export function MagiShell() {
                 report={report}
               />
             )}
-          </div>
+          </ResizableSidebar>
         </div>
         <StatusBar
           host={host}

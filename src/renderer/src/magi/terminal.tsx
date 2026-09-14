@@ -1,3 +1,4 @@
+import { shiftEnterInput } from '../components/terminal-pane/terminal-shift-enter-input'
 import { useEffect, useRef, useState } from 'react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
@@ -44,6 +45,24 @@ export function SessionTerminal({
         background: style.getPropertyValue('--background').trim(),
         foreground: style.getPropertyValue('--foreground').trim()
       }
+    })
+    term.attachCustomKeyEventHandler((event) => {
+      if (
+        event.key !== 'Enter' ||
+        !event.shiftKey ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.altKey ||
+        event.isComposing ||
+        event.keyCode === 229
+      ) {
+        return true
+      }
+      if (event.type === 'keydown') {
+        event.preventDefault()
+        window.magi.write(key, shiftEnterInput(false))
+      }
+      return false
     })
     instance.current = term
     const fit = new FitAddon()

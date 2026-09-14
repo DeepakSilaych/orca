@@ -1,3 +1,4 @@
+import { shiftEnterInput } from './terminal-shift-enter-input'
 import {
   keybindingMatchesAction,
   type KeybindingInput,
@@ -175,7 +176,7 @@ export function resolveTerminalShortcutAction(
     const hasTrustedWindowsCsiU = windowsHost && getWindowsShiftEnterEncoding?.() === 'csi-u'
     // Why: CSI-u is application input, not universal; without trusted Windows evidence, require active KKP negotiation.
     const canSendCsiU = hasTrustedWindowsCsiU || (getKittyKeyboardFlagsActivePane?.() ?? 0) > 0
-    return { type: 'sendInput', data: canSendCsiU ? '\x1b[13;2u' : '\x1b\r' }
+    return { type: 'sendInput', data: shiftEnterInput(canSendCsiU) }
   }
 
   if (

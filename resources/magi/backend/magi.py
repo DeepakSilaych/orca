@@ -19,7 +19,7 @@ import time
 import urllib.request
 import uuid
 
-VERSION = "0.2.0"
+VERSION = "0.2.1"
 DEFAULT_PREFERENCES = {
     "theme": "graphite", "accent": "mint", "font_family": "system",
     "font_size": 13, "line_height": 1.35, "terminal_padding": 18,
