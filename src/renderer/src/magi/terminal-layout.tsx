@@ -1,3 +1,4 @@
+import type { OpenFile } from './editor'
 import { useEffect, useRef, useState } from 'react'
 import type { PaneLayout, Workspace } from '../../../shared/magi/types'
 import { SessionTerminal } from './terminal'
@@ -31,6 +32,7 @@ function measure(
   measure(tree.second, second, overrides, panes, dividers)
 }
 export function TerminalLayout({
+  openFile,
   host,
   workspace,
   terminal,
@@ -39,6 +41,7 @@ export function TerminalLayout({
   select,
   refresh
 }: {
+  openFile: (file: OpenFile) => void
   host: string
   workspace: Workspace
   terminal: string
@@ -89,6 +92,7 @@ export function TerminalLayout({
           onFocusCapture={() => select(pane.terminal)}
         >
           <SessionTerminal
+            openFile={openFile}
             host={host}
             workspace={workspace.id}
             terminal={pane.terminal}

@@ -1,3 +1,5 @@
+import type { useFileTabs } from './file-tabs'
+import { FileTabs } from './file-tabs'
 import { ReorderList } from './reorder-list'
 import { terminalTabs } from '../../../shared/magi/types'
 import { RenameItem } from './rename-item'
@@ -7,6 +9,7 @@ import type { Workspace, Session } from '../../../shared/magi/types'
 import type { OpenFile } from './editor'
 import type { FormKind } from './forms'
 export function TerminalTabs({
+  fileTabs,
   host,
   refresh,
   workspace,
@@ -19,6 +22,7 @@ export function TerminalTabs({
   setForm,
   setConfirm
 }: {
+  fileTabs: ReturnType<typeof useFileTabs>
   host: string
   refresh: () => void
   workspace?: Workspace
@@ -74,6 +78,7 @@ export function TerminalTabs({
             />
           )}
         </ReorderList>
+        <FileTabs files={fileTabs.files} active={file} select={setFile} close={fileTabs.close} />
         {workspace && (
           <Button
             aria-label="New terminal"

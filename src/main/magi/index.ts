@@ -46,6 +46,7 @@ function authorize(event: Electron.IpcMainEvent | Electron.IpcMainInvokeEvent): 
   }
 }
 const operations = new Set([
+  'resolve_links',
   'snapshot',
   'host_add',
   'repo_register',

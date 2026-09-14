@@ -1,3 +1,4 @@
+import { useFileTabs } from './file-tabs'
 import { ResizableSidebar, usePanels, WorkspaceHeader } from './panels'
 import { closeActiveTab } from './close-active-tab'
 import { useWorkspaceShortcuts } from './shortcuts'
@@ -14,7 +15,6 @@ import { WorkspaceForm, type FormKind } from './forms'
 import { MagiSettings, readAppearance } from './settings'
 import { TerminalLayout } from './terminal-layout'
 import { Repositories } from './repositories'
-import type { OpenFile } from './editor'
 const FileViewer = lazy(() => import('./editor').then((module) => ({ default: module.FileViewer })))
 export function MagiShell() {
   const panels = usePanels()
@@ -32,7 +32,8 @@ export function MagiShell() {
   const [settings, setSettings] = useState(false)
   const [appearance, setAppearance] = useState(readAppearance)
   const [query, setQuery] = useState('')
-  const [file, setFile] = useState<OpenFile>()
+  const fileTabs = useFileTabs(JSON.stringify([host, workspaceId]))
+  const { file, select: setFile } = fileTabs
   const [confirm, setConfirm] = useState<'archive' | 'terminal'>()
   const [busy, setBusy] = useState(false)
   const workspace = snapshot?.workspaces.find((w) => w.id === workspaceId)
@@ -203,7 +204,7 @@ export function MagiShell() {
         terminal,
         host,
         snapshot,
-        setFile,
+        setFile: () => fileTabs.close(),
         setBusy,
         setSnapshot,
         setTerminalId,
@@ -246,6 +247,7 @@ export function MagiShell() {
               busy={busy}
               setTerminalId={setTerminalId}
               setFile={setFile}
+              fileTabs={fileTabs}
               terminalNew={terminalNew}
               setForm={setForm}
               setConfirm={setConfirm}
@@ -278,12 +280,13 @@ export function MagiShell() {
                     host={host}
                     workspace={workspace.id}
                     file={file}
-                    close={() => setFile(undefined)}
+                    close={() => fileTabs.close()}
                     theme={appearance.theme}
                   />
                 </Suspense>
               ) : terminal && workspace ? (
                 <TerminalLayout
+                  openFile={setFile}
                   select={setTerminalId}
                   refresh={refresh}
                   host={host}
@@ -314,6 +317,7 @@ export function MagiShell() {
           <ResizableSidebar side="right" layout={panels}>
             {workspace && (
               <Repositories
+                key={`${host}:${workspace.id}`}
                 host={host}
                 workspace={workspace}
                 statuses={statuses}

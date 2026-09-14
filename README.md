@@ -7,7 +7,8 @@
 Magi builds on Orca's UI with sess-owned local and SSH sessions. Each workspace groups worktrees from several repositories, terminal tabs and nested splits, with files, diffs, Git status, PRs and attached Linear tickets in one window. Closing the app leaves sessions running on their execution host.
 
 - Workspaces on the left, terminal tabs above, files and source control on the right.
-- A permanent **Genral** workspace on each host.
+- A permanent **Genral** workspace on each host, with a file browser and multiple file tabs.
+- Cmd-click terminal URLs to open your browser, or existing file paths to open a file tab. Hold Cmd to underline available links; relative paths resolve against the terminal’s current directory on its execution host. File links support line and column numbers.
 - New or existing branches across selected repos, or blank workspaces that agents can attach repos to later.
 - GitHub cloning through `gh`; shared utility repositories without worktrees.
 - Drag the grip beside a workspace or terminal tab to reorder it. Click to select; click its selected name again, double-click, or press F2 to rename.
@@ -17,15 +18,15 @@ Magi builds on Orca's UI with sess-owned local and SSH sessions. Each workspace 
 
 Use Cmd on macOS; Ctrl on Linux.
 
-| Shortcut | Action |
-| --- | --- |
-| Cmd+Up / Down | Previous / next workspace |
-| Cmd+Left / Right | Previous / next terminal tab |
-| Cmd+N | New workspace |
-| Cmd+T | New terminal tab |
-| Cmd+D | Split the focused pane side by side |
-| Cmd+Shift+D | Split the focused pane above/below |
-| Cmd+W | Close the file or focused terminal pane; archive an empty workspace |
+| Shortcut         | Action                                                              |
+| ---------------- | ------------------------------------------------------------------- |
+| Cmd+Up / Down    | Previous / next workspace                                           |
+| Cmd+Left / Right | Previous / next terminal tab                                        |
+| Cmd+N            | New workspace                                                       |
+| Cmd+T            | New terminal tab                                                    |
+| Cmd+D            | Split the focused pane side by side                                 |
+| Cmd+Shift+D      | Split the focused pane above/below                                  |
+| Cmd+W            | Close the file or focused terminal pane; archive an empty workspace |
 
 Splits can nest. Drag their dividers to resize; layouts and order survive restart. Closing an individual pane ends that session. Archiving an empty workspace retains its worktrees; Genral cannot be archived.
 
@@ -41,7 +42,7 @@ The cask installs Git, gh, tmux and Python for local sessions. Install your codi
 
 ## macOS release
 
-**v0.2.1 supports Apple Silicon on macOS 12+.** It repairs v0.2.0's invalid bundle signature using an ad-hoc signature with strict verification during packaging. It is **not Developer ID-signed or notarized**: macOS may still block first launch and require approval in System Settings → Privacy & Security. The tap does not disable Gatekeeper or remove quarantine.
+**v0.2.2 supports Apple Silicon on macOS 12+.** It uses an ad-hoc signature with strict verification during packaging. It is **not Developer ID-signed or notarized**: macOS may still block first launch and require approval in System Settings → Privacy & Security. The tap does not disable Gatekeeper or remove quarantine.
 
 If a manual copy already exists in Applications, move that app aside before Homebrew installation. Workspace data is separate and retained. Direct DMG and ZIP downloads are also available from Releases. Automatic in-app installation remains disabled until signed updates are available.
 

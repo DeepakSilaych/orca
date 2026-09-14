@@ -1,9 +1,12 @@
+import { installTerminalLinks } from './terminal-links'
+import type { OpenFile } from './editor'
 import { shiftEnterInput } from '../components/terminal-pane/terminal-shift-enter-input'
 import { useEffect, useRef, useState } from 'react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { Button } from '@/components/ui/button'
 export function SessionTerminal({
+  openFile,
   host,
   workspace,
   terminal,
@@ -11,6 +14,7 @@ export function SessionTerminal({
   theme,
   active = true
 }: {
+  openFile: (file: OpenFile) => void
   host: string
   workspace: string
   terminal: string
@@ -18,6 +22,8 @@ export function SessionTerminal({
   theme: string
   active?: boolean
 }) {
+  const open = useRef(openFile)
+  open.current = openFile
   const focused = useRef(active)
   focused.current = active
   const instance = useRef<Terminal | null>(null)
@@ -68,6 +74,14 @@ export function SessionTerminal({
     const fit = new FitAddon()
     term.loadAddon(fit)
     term.open(container.current)
+    const removeLinks = installTerminalLinks(
+      term,
+      host,
+      workspace,
+      terminal,
+      (file) => open.current(file),
+      (e) => setError(String(e))
+    )
     let frame = requestAnimationFrame(() => fit.fit())
     const off = window.magi.onTerminal((event) => {
       if (event.key !== key || cancelled) {
@@ -112,6 +126,7 @@ export function SessionTerminal({
     return () => {
       cancelled = true
       off()
+      removeLinks()
       input.dispose()
       resize.disconnect()
       cancelAnimationFrame(frame)

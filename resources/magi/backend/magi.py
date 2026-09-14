@@ -19,7 +19,7 @@ import time
 import urllib.request
 import uuid
 
-VERSION = "0.2.1"
+VERSION = "0.2.2"
 DEFAULT_PREFERENCES = {
     "theme": "graphite", "accent": "mint", "font_family": "system",
     "font_size": 13, "line_height": 1.35, "terminal_padding": 18,
@@ -533,8 +533,27 @@ class Backend:
         results = list(POOL.map(self.status_one, rows))
         return {"repos": results, "elapsedMs": round((time.monotonic() - start) * 1000, 1), "at": time.time()}
 
+    def resolve_links(self, workspace, terminal, paths, **_):
+        if not isinstance(paths, list) or len(paths) > 64: raise ValueError("Too many link candidates")
+        ws = self.ws(workspace)
+        session = next((t for t in ws["terminals"] if t["id"] == terminal), None)
+        if not session: raise ValueError("Unknown terminal")
+        cwd = session["cwd"]
+        if session.get("started"):
+            cwd = text(run(["tmux", "display-message", "-p", "-t", "=magi-" + ident(terminal) + ":", "#{pane_current_path}"]))
+        result = []
+        for value in paths:
+            if not isinstance(value, str) or len(value) > 4096: raise ValueError("Invalid file path")
+            path = Path(value).expanduser()
+            if not path.is_absolute(): path = Path(cwd) / path
+            try:
+                path = path.resolve()
+                result.append({"repo": "@files", "path": str(path)} if path.is_file() else None)
+            except (OSError, ValueError): result.append(None)
+        return result
+
     def files(self, workspace, repo, directory="", **_):
-        r = self.attachment(workspace, repo)
+        r = {"path": self.ws(workspace)["path"]} if repo == "@workspace" else self.attachment(workspace, repo)
         path = within(r["path"], directory)
         entries = []
         with os.scandir(path) as it:
@@ -546,8 +565,13 @@ class Backend:
         return {"entries": entries, "limited": len(entries) >= 2000}
 
     def file(self, workspace, repo, path, **_):
-        r = self.attachment(workspace, repo)
-        p = within(r["path"], path)
+        if repo == "@files":
+            self.ws(workspace)
+            p = Path(path).expanduser()
+            if not p.is_absolute(): raise ValueError("File link must be absolute")
+        else:
+            r = {"path": self.ws(workspace)["path"]} if repo == "@workspace" else self.attachment(workspace, repo)
+            p = within(r["path"], path)
         if not p.is_file(): raise ValueError("Not a regular file")
         with p.open("rb") as f: raw = f.read(MAX_TEXT + 1)
         if b"\0" in raw[:8192]: return {"text": "Binary file", "binary": True, "truncated": False}
@@ -647,7 +671,7 @@ class Backend:
         return result
 
     def dispatch(self, op, args=None):
-        allowed = {"terminal_split", "terminal_resize", "terminal_reorder", "workspace_reorder", "snapshot", "preferences_get", "preferences_set", "host_add", "repo_register", "branches", "workspace_create", "repo_attach", "workspace_archive", "workspace_rename", "terminal_rename", "terminal_new", "terminal_prepare", "terminal_remove", "status", "files", "file", "diff", "diff_content", "git_action", "ticket_attach", "integrations", "install_cli"}
+        allowed = {"resolve_links", "terminal_split", "terminal_resize", "terminal_reorder", "workspace_reorder", "snapshot", "preferences_get", "preferences_set", "host_add", "repo_register", "branches", "workspace_create", "repo_attach", "workspace_archive", "workspace_rename", "terminal_rename", "terminal_new", "terminal_prepare", "terminal_remove", "status", "files", "file", "diff", "diff_content", "git_action", "ticket_attach", "integrations", "install_cli"}
         if op not in allowed: raise ValueError("Unknown operation: " + op)
         return getattr(self, op)(**(args or {}))
 

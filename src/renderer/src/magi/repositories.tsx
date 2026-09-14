@@ -265,7 +265,8 @@ function Repository({ repo, props, view }: { repo: RepoStatus; props: Props; vie
   )
 }
 export function Repositories(props: Props) {
-  const [view, setView] = useState('git')
+  const [revision, setRevision] = useState(0)
+  const [view, setView] = useState(props.workspace.permanent ? 'files' : 'git')
   return (
     <aside className="flex h-full min-h-0 flex-col border-l bg-sidebar">
       <div className="flex h-11 shrink-0 items-center justify-between border-b px-2">
@@ -279,16 +280,28 @@ export function Repositories(props: Props) {
           aria-label="Refresh repositories"
           variant="ghost"
           size="icon-xs"
-          onClick={props.refresh}
+          onClick={() => {
+            setRevision((r) => r + 1)
+            props.refresh()
+          }}
         >
           <RefreshCw />
         </Button>
       </div>
       <div className="min-h-0 flex-1 overflow-auto scrollbar-sleek">
+        {view === 'files' && (
+          <Directory
+            key={revision}
+            host={props.host}
+            workspace={props.workspace.id}
+            repo="@workspace"
+            openFile={props.openFile}
+          />
+        )}
         {props.statuses.map((repo) => (
-          <Repository key={repo.id} repo={repo} props={props} view={view} />
+          <Repository key={`${repo.id}:${revision}`} repo={repo} props={props} view={view} />
         ))}
-        {props.statuses.length === 0 && (
+        {props.statuses.length === 0 && view !== 'files' && (
           <p className="p-4 text-xs leading-relaxed text-muted-foreground">
             Attach repositories to browse files and changes. Blank workspaces can attach worktrees
             later through the Magi CLI.

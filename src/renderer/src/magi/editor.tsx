@@ -37,7 +37,13 @@ monaco.typescript.javascriptDefaults.setDiagnosticsOptions({
   noSyntaxValidation: true
 })
 loader.config({ monaco })
-export type OpenFile = { repo: string; path: string; scope?: 'working' | 'staged' }
+export type OpenFile = {
+  repo: string
+  path: string
+  scope?: 'working' | 'staged'
+  line?: number
+  column?: number
+}
 export function FileViewer({
   host,
   workspace,
@@ -111,7 +117,8 @@ export function FileViewer({
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex h-10 shrink-0 items-center border-b px-3 text-xs">
         <span className="flex-1 truncate">
-          {file.repo} / {file.path}
+          {file.repo.startsWith('@') ? '' : `${file.repo} / `}
+          {file.path}
           {file.scope && ` · ${file.scope} diff`}
         </span>
         <Button aria-label="Close file" variant="ghost" size="icon-xs" onClick={close}>
@@ -149,6 +156,12 @@ export function FileViewer({
         />
       ) : (
         <Editor
+          onMount={(editor) => {
+            if (file.line) {
+              editor.revealLineInCenter(file.line)
+              editor.setPosition({ lineNumber: file.line, column: file.column || 1 })
+            }
+          }}
           value={content.text}
           language={language}
           theme={theme === 'light' ? 'vs' : 'vs-dark'}
